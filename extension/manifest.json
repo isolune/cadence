@@ -119,6 +119,10 @@
     }
   ],
 
+  "host_permissions": [
+    "<all_urls>"
+  ],
+
   "icons": {
     "32": "asset/icon/relm.ico"
   },
