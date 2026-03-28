@@ -100,8 +100,7 @@
     },
     {
       "matches": ["https://yt.xyz/*"],
-      "js": ["content/site/invidious.js"],
-      "run_at": "document_start"
+      "js": ["content/site/invidious.js"]
     },
     {
       "matches": ["https://*.reddit.com/*"],
