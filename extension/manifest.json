@@ -2,7 +2,7 @@
   "name": "Cadence",
   "author": "lum",
   "description": "Vim-lite browser keys",
-  "version": "1.0",
+  "version": "1.0.1",
   "manifest_version": 3,
 
   "action": {
