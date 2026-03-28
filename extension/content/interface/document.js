@@ -267,7 +267,7 @@ const Document = (function() {
     function deepElementFromPoint(x, y, root = document) {
         const element = root.elementFromPoint(x, y);
 
-        if (element.shadowRoot !== null) {
+        if (element !== null && element.shadowRoot !== null) {
             return deepElementFromPoint(x, y, element.shadowRoot) ?? element;
         }
 
