@@ -230,17 +230,16 @@ const Document = (function() {
     function contentArea(element) {
         const {
             x,
-            y
-        } = element.getBoundingClientRect();
-
-        const {
-            clientWidth: w,
-            clientHeight: h
-        } = element;
+            y,
+            w,
+            h
+        } = toArea(element.getBoundingClientRect());
 
         const {
             borderLeftWidth: bl,
+            borderRightWidth: br,
             borderTopWidth: bt,
+            borderBottomWidth: bb,
             paddingLeft: pl,
             paddingRight: pr,
             paddingTop: pt,
@@ -248,10 +247,10 @@ const Document = (function() {
         } = window.getComputedStyle(element);
 
         return {
-            x: x + parseFloat(bl || 0) + parseFloat(pl || 0),
-            y: y + parseFloat(bt || 0) + parseFloat(pt || 0),
-            w: w - parseFloat(pl || 0) - parseFloat(pr || 0),
-            h: h - parseFloat(pt || 0) - parseFloat(pb || 0)
+            x: x + parseFloat(bl) + parseFloat(pl),
+            y: y + parseFloat(bt) + parseFloat(pt),
+            w: w - parseFloat(bl) - parseFloat(br) - parseFloat(pl) - parseFloat(pr),
+            h: h - parseFloat(bt) - parseFloat(bb) - parseFloat(pt) - parseFloat(pb)
         };
     }
 
@@ -377,7 +376,7 @@ const Document = (function() {
         yRatio = inset
     }) {
         let area = content
-            ? contentArea(element)
+            ? contentArea(element) // TODO: `firstContentArea()` eg
             : element.getBoundingClientRect();
 
         if (inViewport) {
