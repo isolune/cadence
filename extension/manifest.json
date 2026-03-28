@@ -17,6 +17,9 @@
 
   "browser_specific_settings": {
     "gecko": {
+      "data_collection_permissions": {
+        "required": ["none"]
+      },
       "id": "cadence@lune",
       "strict_min_version": "148.0",
       "update_url": "https://raw.githubusercontent.com/isolune/cadence/refs/heads/master/dist/updates.json"
