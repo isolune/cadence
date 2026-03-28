@@ -1,0 +1,34 @@
+.cdn-container {
+  font-family: JBM;
+  font-size: 12px;
+}
+
+.cdn-body {
+  border-radius: 3px;
+  border-style: solid;
+  border-width: 1px;
+  margin: 0px;
+  padding: 0px 4px;
+  position: absolute;
+}
+
+/* .cdn-char {} */
+.cdn-charsel {
+  color: #f8f9fe;
+  font-weight: bold;
+}
+
+.cdn-theme-charcoal {
+  background: linear-gradient(#2a2c34 0%, #14151c 100%);
+  border-color: #08090e;
+  box-shadow: #060710 0px -2px 0px inset;
+  color: #d4d6e0;
+}
+
+.cdn-theme-default,
+.cdn-theme-navy {
+  background: linear-gradient(#323252 0%, #121232 100%);
+  border-color: #030322;
+  box-shadow: #080828 0px -2px 0px inset;
+  color: #e1e3f2;
+}

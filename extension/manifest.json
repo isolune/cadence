@@ -1,0 +1,138 @@
+{
+  "name": "Cadence",
+  "author": "lum",
+  "description": "Vim-lite browser keys",
+  "version": "1.0",
+  "manifest_version": 3,
+
+  "action": {
+    "default_icon": {
+      "32": "asset/icon/relm-grayscale.ico"
+    }
+  },
+
+  "background": {
+    "scripts": ["background/main.js"]
+  },
+
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "cadence@lune",
+      "strict_min_version": "148.0",
+      "update_url": "https://isolune.github.io/cadence/updates.json"
+    }
+  },
+
+  "commands": {
+    "blur-focused": {
+      "description": "Blur focused element",
+      "suggested_key": {
+        "default": "Alt+B"
+      }
+    },
+    "escape": {
+      "description": "Escape",
+      "suggested_key": {
+        "default": "Alt+Shift+B"
+      }
+    },
+    "focus-next-input": {
+      "description": "Focus next input field",
+      "suggested_key": {
+        "default": "Alt+O"
+      }
+    },
+    "focus-prev-input": {
+      "description": "Focus previous input field",
+      "suggested_key": {
+        "default": "Alt+Shift+O"
+      }
+    },
+    "toggle-site": {
+      "description": "Toggle on site",
+      "suggested_key": {
+        "default": "Alt+F1"
+      }
+    }
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": [
+        "content/world/patch.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": [
+        "asset/catalogue.js",
+        "content/script.js",
+        "content/run/environment.js",
+        "content/run/events.js",
+        "content/run/options.js",
+        "content/interface/browser.js",
+        "content/interface/document.js",
+        "content/interface/hints.js",
+        "content/interface/keys.js",
+        "content/interface/page.js",
+        "content/interface/scroller.js",
+        "content/interface/tracker.js",
+        "content/keys/browser.js",
+        "content/keys/hint.js",
+        "content/keys/marks.js",
+        "content/keys/page.js",
+        "content/keys/scroll.js",
+        "content/passive/command.js",
+        "content/passive/guard.js"
+      ],
+      "match_about_blank": true,
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://*.4chan.org/*"],
+      "js": ["content/site/4chan.js"]
+    },
+    {
+      "matches": ["https://yt.xyz/*"],
+      "js": ["content/site/invidious.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://*.reddit.com/*"],
+      "js": ["content/site/reddit.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://www.youtube.com/*"],
+      "js": ["content/site/youtube.js"]
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content/sentinel.js"],
+      "run_at": "document_start"
+    }
+  ],
+
+  "icons": {
+    "32": "asset/icon/relm.ico"
+  },
+
+  "permissions": [
+    "sessions",
+    "storage",
+    "tabs"
+  ],
+
+  "web_accessible_resources": [
+    {
+      "matches": ["<all_urls>"],
+      "resources": [
+        "asset/font/*",
+        "asset/css/*"
+      ]
+    }
+  ]
+}
