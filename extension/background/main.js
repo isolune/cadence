@@ -142,7 +142,7 @@ function setEnabled(tab, enabled) {
         tasks.push(browser.tabs.sendMessage(id, {
             action: "enable",
             args: enabled
-        }).catch(() => { /* pinned+unrestored (no test) */}));
+        }).catch(() => { /* pinned+unrestored (no test) */ }));
     }
 
     tasks.push(setActionAppearance(tab, enabled));

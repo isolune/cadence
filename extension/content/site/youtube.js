@@ -18,7 +18,7 @@
 
     function toggleSubtitles() {
         Page.click({
-            target: ".ytp-subtitles-button,.ytmClosedCaptioningButtonButton"
+            target: ".ytp-subtitles-button, .ytmClosedCaptioningButtonButton"
         });
     }
 

@@ -960,7 +960,7 @@ const Document = (function() {
             return CLUES;
         },
         get inputIsFocused() {
-            return FocusedInput !== null;
+            return FocusedInput?.isConnected ?? false;
         },
         get queries() {
             return ComposedQuery;
