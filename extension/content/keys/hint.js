@@ -51,13 +51,6 @@
                 }
             })
         ]),
-        H: () => onInteractive([ // TODO: Provisional
-            Page.action("hover", {
-                params: {
-                    toggle: true
-                }
-            })
-        ]),
         i: () => onImage([ // TODO: Provisional
             Page.action("click", {
                 params: {

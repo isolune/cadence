@@ -5,8 +5,6 @@ const Page = (function() {
         CSS_PREFIX
     } = Environment;
 
-    const PSEUDO_HOVER_CLASS = `${CSS_PREFIX}ph`;
-
     /// API
 
     const action = (name, args) => ({
@@ -96,29 +94,6 @@ const Page = (function() {
         return target;
     }
 
-    function hover({
-        params: {
-            toggle = false
-        } = {},
-        ...selection
-    }) {
-        const target = Document.select(selection);
-
-        if (!(target instanceof Element)) {
-            return null;
-        }
-
-        const enter = target.classList.toggle(PSEUDO_HOVER_CLASS);
-
-        if (enter) {
-            Document.simulateMouseEnter(target);
-        } else {
-            Document.simulateMouseLeave(target);
-        }
-
-        return target;
-    }
-
     function interact({
         ...selection
     }) {
@@ -149,16 +124,6 @@ const Page = (function() {
                     byHitbox: true,
                     simulate: true
                 }
-            });
-
-            window.queueMicrotask(() => {
-                const focused = document.activeElement;
-
-                if (focused === null) {
-                    return;
-                }
-
-                focused.blur();
             });
         }
 
@@ -265,7 +230,6 @@ const Page = (function() {
         // Actions
         click,
         focus,
-        hover,
         interact,
         open,
         setCaret,

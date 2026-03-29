@@ -441,11 +441,27 @@ const Document = (function() {
             composed: true
         };
 
-        target.dispatchEvent(new PointerEvent("pointerdown", eventOptions));
+        const pointerEventOptions = {
+            ...eventOptions,
+            isPrimary: true,
+            pointerId: 1,
+            pointerType: "mouse"
+        };
+
+        simulateMouseEnter(target);
+
+        target.dispatchEvent(new PointerEvent("pointerdown", {
+            ...pointerEventOptions,
+            pressure: 0.5
+        }));
+
         target.dispatchEvent(new MouseEvent("mousedown", eventOptions));
-        target.dispatchEvent(new PointerEvent("pointerup", eventOptions));
+        target.dispatchEvent(new PointerEvent("pointerup", pointerEventOptions));
         target.dispatchEvent(new MouseEvent("mouseup", eventOptions));
-        target.dispatchEvent(new MouseEvent("click", eventOptions));
+        target.dispatchEvent(new MouseEvent("click", {
+            ...eventOptions,
+            detail: 1
+        }));
     }
 
     function simulateKey(key) {
@@ -466,23 +482,13 @@ const Document = (function() {
         document.activeElement.dispatchEvent(new KeyboardEvent("keyup", eventOptions));
     }
 
-    function simulateMouseEnter(target, from = null) {
+    function simulateMouseEnter(target) {
         target.dispatchEvent(new MouseEvent("mouseover", {
-            bubbles: true, composed: true, relatedTarget: from
+            bubbles: true, composed: true
         }));
 
         target.dispatchEvent(new MouseEvent("mouseenter", {
-            composed: true, relatedTarget: from
-        }));
-    }
-
-    function simulateMouseLeave(target, to = null) {
-        target.dispatchEvent(new MouseEvent("mouseout", {
-            bubbles: true, composed: true, relatedTarget: to
-        }));
-
-        target.dispatchEvent(new MouseEvent("mouseleave", {
-            composed: true, relatedTarget: to
+            composed: true
         }));
     }
 
@@ -989,7 +995,6 @@ const Document = (function() {
         simulateClick,
         simulateKey,
         simulateMouseEnter,
-        simulateMouseLeave,
         stepMenu,
         supportsSelection,
         toKeyCode
