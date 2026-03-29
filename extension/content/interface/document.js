@@ -441,6 +441,11 @@ const Document = (function() {
             composed: true
         };
 
+        const mouseEventOptions = {
+            ...eventOptions,
+            detail: 1
+        };
+
         const pointerEventOptions = {
             ...eventOptions,
             isPrimary: true,
@@ -455,13 +460,10 @@ const Document = (function() {
             pressure: 0.5
         }));
 
-        target.dispatchEvent(new MouseEvent("mousedown", eventOptions));
+        target.dispatchEvent(new MouseEvent("mousedown", mouseEventOptions));
         target.dispatchEvent(new PointerEvent("pointerup", pointerEventOptions));
-        target.dispatchEvent(new MouseEvent("mouseup", eventOptions));
-        target.dispatchEvent(new MouseEvent("click", {
-            ...eventOptions,
-            detail: 1
-        }));
+        target.dispatchEvent(new MouseEvent("mouseup", mouseEventOptions));
+        target.dispatchEvent(new MouseEvent("click", mouseEventOptions));
     }
 
     function simulateKey(key) {
