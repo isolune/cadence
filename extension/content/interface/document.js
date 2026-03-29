@@ -882,7 +882,7 @@ const Document = (function() {
             .concat(nonInteractive).join(",");
 
         ComposedQuery.input = `
-            :is(input:is(${
+            :is(input:is(:not([type]),${
                 INPUT_TYPES.text.map((t) => `[type='${t}']`).join(",")
             }),${
                 SELECTORS.input.concat(input).join(",")
