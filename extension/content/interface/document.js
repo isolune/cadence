@@ -28,16 +28,17 @@ const Document = (function() {
 
     const CLUES = {
         nextPage: [
-            "next",
             ">",
+            "next",
+            "próxima",
             "próximo",
             "次の"
         ],
         prevPage: [
-            "prev",
-            "previous",
             "<",
             "anterior",
+            "prev",
+            "previous",
             "前の"
         ]
     };
