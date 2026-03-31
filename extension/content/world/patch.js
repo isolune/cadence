@@ -3,10 +3,10 @@
 (function() {
     const _attachShadow = Element.prototype.attachShadow;
 
-    Element.prototype.attachShadow = function(init) {
-        const root = _attachShadow.call(this, init);
+    Element.prototype.attachShadow = function(options) {
+        const root = _attachShadow.call(this, options);
 
-        if (init.mode === "open") {
+        if (options.mode === "open") {
             this.dispatchEvent(new CustomEvent("shadowattached", {
                 bubbles: true,
                 composed: true
