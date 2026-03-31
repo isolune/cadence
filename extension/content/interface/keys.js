@@ -92,15 +92,7 @@ const Keys = (function() {
         const layers = Layers[event.type];
 
         for (let i = 0; i < layers.length; i++) {
-            let response;
-
-            try {
-                response = layers[i].cb(event.key) ?? NEXT
-            } catch (error) {
-                Browser.error(error);
-
-                response = DONE | BLOCK;
-            }
+            const response = layers[i].cb(event.key) ?? NEXT
 
             if (response & DONE)  layers.splice(i--, 1);
             if (response & NEXT)  continue;
