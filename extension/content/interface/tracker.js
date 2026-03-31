@@ -207,7 +207,7 @@ const Tracker = (function() {
 
         members.add(element);
 
-        const box = Document.firstLayoutElement(element) ?? element;
+        const box = Document.firstBoxGeneratingElement(element) ?? element;
 
         if (element !== box) {
             ElementToBox.set(element, box);

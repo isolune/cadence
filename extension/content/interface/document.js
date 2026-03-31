@@ -44,7 +44,7 @@ const Document = (function() {
     };
 
     const FILTER = Object.freeze({
-        layoutOnly: {
+        boxGenerating: {
             acceptNode(element) {
                 return element.checkVisibility()
                     ? NodeFilter.FILTER_ACCEPT
@@ -140,6 +140,26 @@ const Document = (function() {
     let MouseX = 0;
     let MouseY = 0;
 
+    const boxInsets = (element) => {
+        const cs = window.getComputedStyle(element);
+
+        return {
+            bl: parseFloat(cs.borderLeftWidth),
+            br: parseFloat(cs.borderRightWidth),
+            bt: parseFloat(cs.borderTopWidth),
+            bb: parseFloat(cs.borderBottomWidth),
+            pl: parseFloat(cs.paddingLeft),
+            pr: parseFloat(cs.paddingRight),
+            pt: parseFloat(cs.paddingTop),
+            pb: parseFloat(cs.paddingBottom)
+        };
+    };
+
+    const boxRects = (element) =>
+        isAtomic(element)
+            ? [element.getBoundingClientRect()]
+            : element.getClientRects();
+
     const byIntraDomOrder = (a, b) => // Don't supply disconnected
         a === b
             ? 0
@@ -228,33 +248,6 @@ const Document = (function() {
         );
     }
 
-    function contentArea(element) {
-        const {
-            x,
-            y,
-            w,
-            h
-        } = toArea(element.getBoundingClientRect());
-
-        const {
-            borderLeftWidth: bl,
-            borderRightWidth: br,
-            borderTopWidth: bt,
-            borderBottomWidth: bb,
-            paddingLeft: pl,
-            paddingRight: pr,
-            paddingTop: pt,
-            paddingBottom: pb
-        } = window.getComputedStyle(element);
-
-        return {
-            x: x + parseFloat(bl) + parseFloat(pl),
-            y: y + parseFloat(bt) + parseFloat(pt),
-            w: w - parseFloat(bl) - parseFloat(br) - parseFloat(pl) - parseFloat(pr),
-            h: h - parseFloat(bt) - parseFloat(bb) - parseFloat(pt) - parseFloat(pb)
-        };
-    }
-
     function deepActiveElement(root = document) {
         let element = root.activeElement;
 
@@ -297,35 +290,53 @@ const Document = (function() {
         return d;
     }
 
-    function firstLayoutArea(element) {
-        if (isAtomic(element)) {
-            return toArea(element.getBoundingClientRect());
+    function firstBoxArea(element, {
+        content = false
+    } = {}) {
+        const box = firstBoxGeneratingElement(element);
+
+        if (box === null) {
+            return null;
         }
 
-        const rects = element.getClientRects();
+        const rects = boxRects(box);
 
-        if (rects.length === 0) {
-            const content = firstLayoutElement(element);
-
-            if (content === element || content === null) {
-                return null;
-            }
-
-            return firstLayoutArea(content);
+        if (!content) {
+            return toArea(rects[0]);
         }
 
-        for (const rect of rects) {
-            if (rect.width === 0 || rect.height === 0) {
+        const {
+            bl, br, bt, bb,
+            pl, pr, pt, pb
+        } = boxInsets(box);
+
+        for (let i = 0; i < rects.length; i++) {
+            const {
+                x,
+                y,
+                width: w,
+                height: h
+            } = rects[i];
+
+            const insetL = i === 0 ? bl + pl : 0;
+            const insetR = i === rects.length - 1 ? br + pr : 0;
+
+            if (insetL + insetR >= w) {
                 continue;
             }
 
-            return toArea(rect);
+            return {
+                x: x + insetL,
+                y: y + bt + pt,
+                w: w - insetL - insetR,
+                h: h - bt - pt - bb - pb
+            };
         }
 
         return null;
     }
 
-    function firstLayoutElement(element) {
+    function firstBoxGeneratingElement(element) {
         if (element.checkVisibility()) {
             return element;
         }
@@ -333,7 +344,7 @@ const Document = (function() {
         return document.createTreeWalker(
             element,
             NodeFilter.SHOW_ELEMENT,
-            FILTER.layoutOnly
+            FILTER.boxGenerating
         ).nextNode();
     }
 
@@ -376,9 +387,13 @@ const Document = (function() {
         xRatio = inset,
         yRatio = inset
     }) {
-        let area = content
-            ? contentArea(element) // TODO: `firstContentArea()` eg
-            : element.getBoundingClientRect();
+        let area = firstBoxArea(element, {
+            content
+        });
+
+        if (area === null) {
+            return null;
+        }
 
         if (inViewport) {
             area = intersect(area, viewportArea());
@@ -422,20 +437,18 @@ const Document = (function() {
     }
 
     function simulateClick(target, {
-        inset = 0.02
+        point = pointInElement(target, {
+            inset: 0.5
+        })
     } = {}) {
-        const {
-            x,
-            y
-        } = pointInElement(target, {
-            content: true,
-            inset
-        });
+        if (point === null) {
+            return;
+        }
 
         const eventOptions = {
             button: 0,
-            clientX: x,
-            clientY: y,
+            clientX: point.x,
+            clientY: point.y,
             bubbles: true,
             cancelable: true,
             composed: true
@@ -978,14 +991,13 @@ const Document = (function() {
         byIntraDomOrder,
         caretAtOrigin,
         containsPoint,
-        contentArea,
         deepActiveElement,
         deepElementFromPoint,
         deepElementsFromPoint,
         dom,
         domDepth,
-        firstLayoutArea,
-        firstLayoutElement,
+        firstBoxArea,
+        firstBoxGeneratingElement,
         isAtomic,
         isInputField,
         isInViewport,

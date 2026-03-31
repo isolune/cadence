@@ -185,14 +185,14 @@ const Hints = (function() {
 
         for (let i = 0; i < count; i++) {
             const item = items[i];
-            const itemArea = Document.firstLayoutArea(item);
+            const area = Document.firstBoxArea(item);
 
-            if (itemArea === null) {
+            if (area === null) {
                 continue;
             }
 
-            const x = Math.max(itemArea.x, 0);
-            const y = Math.max(itemArea.y, 0);
+            const x = Math.max(area.x, 0);
+            const y = Math.max(area.y, 0);
 
             const id = ids[i];
 

@@ -1,10 +1,6 @@
 "use strict";
 
 const Page = (function() {
-    const {
-        CSS_PREFIX
-    } = Environment;
-
     /// API
 
     const action = (name, args) => ({
@@ -38,19 +34,20 @@ const Page = (function() {
         } = {},
         ...selection
     }) {
-        const origin = Document.select(selection);
+        const reference = Document.select(selection);
 
-        if (!(origin instanceof Element)) {
+        if (!(reference instanceof Element)) {
             return null;
         }
 
-        let target;
+        let target, point;
 
         if (byHitbox) {
-            const point = Document.pointInElement(origin, {
+            point = Document.pointInElement(reference, {
                 content: true,
                 inViewport: true,
-                inset: 0.02
+                xRatio: 0.5,
+                yRatio: 0.02
             });
 
             if (point !== null) {
@@ -59,22 +56,19 @@ const Page = (function() {
                     y
                 } = point;
 
-                const hit = Document.deepElementFromPoint(x, y);
-
-                // RELATION TEST
-                target = (origin.parentElement ?? origin)
-                    .contains(hit)
-                        ? hit
-                        : origin;
+                target = Document.deepElementFromPoint(x, y)
+                    ?? reference;
             } else {
-                target = origin;
+                target = reference;
             }
         } else {
-            target = origin;
+            target = reference;
         }
 
         if (simulate) {
-            Document.simulateClick(target);
+            Document.simulateClick(target, {
+                point
+            });
         } else {
             target.click();
         }
