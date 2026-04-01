@@ -1,17 +1,25 @@
 "use strict";
 
 (function() {
-    const _attachShadow = Element.prototype.attachShadow;
+    const BUILTIN = Object.freeze({
+        attachShadow: Element.prototype.attachShadow
+    });
+
+    const emitShadowAttached = (target) =>
+        target.dispatchEvent(new CustomEvent("shadowattached", {
+            bubbles: true, composed: true
+        }));
 
     Element.prototype.attachShadow = function(options) {
-        const root = _attachShadow.call(this, options);
+        const root = BUILTIN.attachShadow.call(this, options);
 
-        if (options.mode === "open") {
-            this.dispatchEvent(new CustomEvent("shadowattached", {
-                bubbles: true,
-                composed: true
-            }));
-        }
+        hook: {
+            if (options.mode !== "open") {
+                break hook;
+            }
+
+            emitShadowAttached(this);
+        };
 
         return root;
     };
