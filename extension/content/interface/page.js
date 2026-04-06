@@ -202,16 +202,20 @@ const Page = (function() {
     /// Controls
 
     function pressDown() {
-        if (document.activeElement?.tagName === "SELECT") {
-            Document.stepMenu(document.activeElement, 1);
+        const activeElement = Document.deepActiveElement();
+
+        if (activeElement?.tagName === "SELECT") {
+            Document.stepMenu(activeElement, 1);
         } else {
             Document.simulateKey("ArrowDown");
         }
     }
 
     function pressUp() {
-        if (document.activeElement?.tagName === "SELECT") {
-            Document.stepMenu(document.activeElement, -1);
+        const activeElement = Document.deepActiveElement();
+
+        if (activeElement?.tagName === "SELECT") {
+            Document.stepMenu(activeElement, -1);
         } else {
             Document.simulateKey("ArrowUp");
         }

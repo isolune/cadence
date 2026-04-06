@@ -162,7 +162,7 @@
 
         const params = pack(motion);
 
-        if (key === Key.prev && Scroller.gliding) {
+        if (key === Key.prev && Scroller.coasting) {
             Scroller.extend(params);
         } else {
             Scroller.scroll(params);

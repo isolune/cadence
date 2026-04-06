@@ -2,7 +2,7 @@
   "name": "Cadence",
   "author": "lum",
   "description": "Vim-lite browser keys",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "manifest_version": 3,
 
   "action": {
@@ -74,6 +74,7 @@
         "asset/catalogue.js",
         "content/script.js",
         "content/run/environment.js",
+        "content/run/error.js",
         "content/run/events.js",
         "content/run/options.js",
         "content/interface/browser.js",
@@ -114,6 +115,7 @@
     {
       "matches": ["<all_urls>"],
       "js": ["content/sentinel.js"],
+      "match_about_blank": true,
       "run_at": "document_start"
     }
   ],

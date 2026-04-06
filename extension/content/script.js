@@ -8,14 +8,14 @@ const Script = (function() {
         suspended: "suspended"
     });
 
-    const Lifecycle = {
+    const Routines = {
         resume: [],
         suspend: []
     };
 
     const {
         promise: blocked,
-        resolve: block,
+        resolve: block
     } = Promise.withResolvers();
 
     const {
@@ -36,12 +36,12 @@ const Script = (function() {
         if (enabled) {
             if (State === STATE.init) {
                 begin();
-            } else if (State === STATE.suspended) {
+            } else if (State !== STATE.active) {
                 resume();
             }
         } else {
             if (State === STATE.init) {
-                block();
+                abort();
             } else if (State === STATE.active) {
                 suspend();
             }
@@ -49,11 +49,11 @@ const Script = (function() {
     }
 
     function onResume(fn) {
-        Lifecycle.resume.push(fn);
+        Routines.resume.push(fn);
     }
 
     function onSuspend(fn) {
-        Lifecycle.suspend.push(fn);
+        Routines.suspend.push(fn);
     }
 
     /// Private
@@ -86,13 +86,13 @@ const Script = (function() {
 
         if (State === STATE.blocked) {
             init();
+        } else {
+            for (const fn of Routines.resume) {
+                fn();
+            }
         }
 
         Events.resume();
-
-        for (const fn of Lifecycle.resume) {
-            fn();
-        }
 
         State = STATE.active;
     }
@@ -104,7 +104,7 @@ const Script = (function() {
 
         Events.suspend();
 
-        for (const fn of Lifecycle.suspend) {
+        for (const fn of Routines.suspend) {
             fn();
         }
 
@@ -144,7 +144,6 @@ const Script = (function() {
         enable,
         onResume,
         onSuspend,
-        primeRun: document.readyState === "loading",
         ready
     });
 })();

@@ -164,19 +164,23 @@ const Scroller = (function() {
 
     function ensureElement() {
         if (!ScrollingElement?.isConnected) {
-            locateElement();
+            findElement();
         }
 
         return ScrollingElement !== null;
     }
 
-    function locateElement() {
+    function findElement() {
         ScrollingElement = Document.select({
             target: "@role",
             targetDetail: {
                 type: "scrolling"
             }
         });
+    }
+
+    function followElement() {
+        DocumentObserver.observe(document.documentElement);
     }
 
     function scrollStep(timestamp) {
@@ -232,12 +236,11 @@ const Scroller = (function() {
         window.requestAnimationFrame(scrollStep);
     }
 
-    function trackElement() {
-        DocumentObserver.observe(document.documentElement);
-    }
+    function stopActivity() {
+        stopImmediate();
 
-    function untrackElement() {
         DocumentObserver.disconnect();
+        ScrollingElement = null;
     }
 
     /// Event
@@ -254,7 +257,7 @@ const Scroller = (function() {
             }
         }
 
-        locateElement();
+        findElement();
     }
 
     /// Init
@@ -262,17 +265,17 @@ const Scroller = (function() {
     Script.ready.then(async () => {
         await Document.dom;
 
-        trackElement();
+        followElement();
     });
 
-    Script.onResume(trackElement);
-    Script.onSuspend(untrackElement);
+    Script.onResume(followElement);
+    Script.onSuspend(stopActivity);
 
     return Object.freeze({
         get active() {
             return Scrolling;
         },
-        get gliding() {
+        get coasting() {
             return Scrolling && (InertiaX || InertiaY);
         },
         extend,

@@ -57,7 +57,7 @@ const Hints = (function() {
         }
     }) {
         if (Items.size > 0) {
-            clear();
+            throw new UnexpectedError("Started hints with hints active");
         }
 
         const built = build({
@@ -335,10 +335,12 @@ const Hints = (function() {
 
     /// Event
 
-    function handleScroll() {
-        if (Items.size > 0) {
-            clear();
+    function handleInterrupt() {
+        if (Items.size === 0) {
+            return;
         }
+
+        clear();
     }
 
     /// Init
@@ -349,15 +351,26 @@ const Hints = (function() {
         Document.dom.then(placeHost);
 
         Events.listen({
-            handler: handleScroll,
-            type: "scroll",
+            type: ["pointerdown", "wheel"],
+            handler: handleInterrupt,
             options: {
                 passive: true
             }
         });
+
+        Events.listen({
+            target: window,
+            type: "resize",
+            handler: handleInterrupt
+        });
     });
 
+    Script.onSuspend(clear);
+
     return Object.freeze({
+        get active() {
+            return Items.size > 0;
+        },
         get theme() {
             return THEMES;
         },

@@ -3,17 +3,22 @@
 const Tracker = (function() {
     const INTERSECTION_THRESHOLD = 0.05;
 
-    const MUTATION_DEBOUNCE_MS = 50;
     const MUTATION_MAX_SIFT = 50;
 
+    const SHADOW_HOST_BLACKLIST = Object.freeze([
+        "ICONIFY-ICON"
+    ]);
+
+    const DesignatedInteractables = new WeakSet();
     const InteractablesInViewport = new Set();
 
     const Roots = new Set();
-    const RootsQueue = [];
     const RootMetadata = new WeakMap();
 
     const ElementToBox = new WeakMap();
     const BoxToElement = new WeakMap();
+
+    const BoxesToSurvey = new Set();
 
     const Intersections = new IntersectionObserver(handleIntersection, {
         // delay: 100,
@@ -26,44 +31,121 @@ const Tracker = (function() {
     const PendingReview = new Map();
     const PendingScan = new Map();
 
-    let MutationTimer = null;
+    const enqueueElement = (pending, root, element) =>
+        pending.getOrInsertComputed(root, () => []).push(element);
 
-    /// Private
+    const enqueueRoot = (pending, root) =>
+        pending.add(root);
 
-    function attach(root) {
-        if (!root.isConnected || Roots.has(root)) {
-            return;
-        }
+    const rootObserver = (root) => {
+        const observer = new MutationObserver(handleMutation);
 
-        const mutations = new MutationObserver(handleMutation);
-
-        mutations.observe(root, {
+        observer.observe(root, {
             attributes: true,
             attributeFilter: Document.attributes.interactive,
             childList: true,
             subtree: true
         });
 
-        Roots.add(root);
-        RootMetadata.set(root, {
+        return observer;
+    };
+
+    let BoxSurvey = null;
+    let FlushJob = null;
+
+    /// Public
+
+    function busy() {
+        return FlushJob !== null || BoxesToSurvey.size > 0;
+    }
+
+    function settle() {
+        if (!busy()) {
+            return Promise.resolve();
+        }
+
+        if (FlushJob !== null) {
+            flush();
+        }
+
+        if (BoxesToSurvey.size === 0) {
+            closeSurvey();
+
+            return Promise.resolve();
+        }
+
+        BoxSurvey ??= Promise.withResolvers();
+
+        return BoxSurvey.promise;
+    }
+
+    /// Private
+
+    function abortSurvey() {
+        BoxSurvey?.reject();
+        BoxSurvey = null;
+
+        BoxesToSurvey.clear();
+    }
+
+    function attach(root) {
+        if (!root.isConnected) {
+            return;
+        }
+
+        if (Roots.has(root)) {
+            throw new UnexpectedError("Attached root twice");
+        }
+
+        const metadata = Object.freeze({
             interactables: new Set(),
-            mutations
+            observer: rootObserver(root)
         });
 
-        scan(root);
+        const {
+            interactables
+        } = metadata;
+
+        Roots.add(root);
+        RootMetadata.set(root, metadata);
+
+        scan(root, interactables);
+
+        return metadata;
+    }
+
+    function cancelFlush() {
+        window.cancelIdleCallback(FlushJob);
+
+        FlushJob = null;
+    }
+
+    function closeSurvey() {
+        BoxSurvey?.resolve();
+        BoxSurvey = null;
+    }
+
+    function designate(element) {
+        if (DesignatedInteractables.has(element)) {
+            return false;
+        }
+
+        DesignatedInteractables.add(element);
+
+        return true;
     }
 
     function detach(root) {
         const {
             interactables,
-            mutations
+            observer
         } = RootMetadata.get(root);
 
         for (const element of interactables) {
             untrack(element);
         }
 
-        mutations.disconnect();
+        observer.disconnect();
 
         Roots.delete(root);
         RootMetadata.delete(root);
@@ -77,10 +159,33 @@ const Tracker = (function() {
         }
     }
 
-    function flushMutations() {
+    function flush() {
+        if (FlushJob === null) {
+            return;
+        }
+
+        FlushJob = null;
+
         pruneRemoved();
         scanAdded();
         reviewChanged();
+    }
+
+    function isAdoptable(element) {
+        return (
+            DesignatedInteractables.has(element) &&
+            !element.matches(Document.queries.nonInteractive)
+        );
+    }
+
+    function isIgnorable(shadowRoot) {
+        const {
+            host: {
+                tagName
+            }
+        } = shadowRoot;
+
+        return SHADOW_HOST_BLACKLIST.includes(tagName);
     }
 
     function prune(root) {
@@ -117,14 +222,17 @@ const Tracker = (function() {
         PendingPrune.clear();
     }
 
+    function requestFlush() {
+        FlushJob ??= whenIdle(flush);
+    }
+
     function retire() {
+        abortSurvey();
+        cancelFlush();
+
         for (const root of Roots) {
             detach(root);
         }
-
-        window.clearTimeout(MutationTimer);
-
-        MutationTimer = null;
     }
 
     function reviewChanged() {
@@ -138,7 +246,11 @@ const Tracker = (function() {
                     continue;
                 }
 
-                if (element.matches(Document.queries.interactive)) {
+                const pass = DesignatedInteractables.has(element)
+                    ? !element.matches(Document.queries.nonInteractive)
+                    :  element.matches(Document.queries.interactive);
+
+                if (pass) {
                     track(element, interactables);
                 } else {
                     untrack(element, interactables);
@@ -149,17 +261,14 @@ const Tracker = (function() {
         PendingReview.clear();
     }
 
-    function scan(node, root = node) {
-        const {
-            interactables
-        } = RootMetadata.get(root);
-
+    function scan(node, interactables) {
         const results = node.querySelectorAll(Document.queries.interactive);
 
-        if (node.nodeType === Node.ELEMENT_NODE) {
-            if (node.matches(Document.queries.interactive)) {
-                track(node, interactables);
-            }
+        if (
+            node.nodeType === Node.ELEMENT_NODE &&
+            node.matches(Document.queries.interactive)
+        ) {
+            track(node, interactables);
         }
 
         for (const element of results) {
@@ -169,16 +278,19 @@ const Tracker = (function() {
 
     function scanAdded() {
         for (const [root, added] of PendingScan.entries()) {
+            const {
+                interactables
+            } = RootMetadata.get(root);
+
             if (added.length > MUTATION_MAX_SIFT) {
-                scan(root);
-                PendingReview.delete(root);
+                scan(root, interactables);
             } else {
-                const ancestors = Document.ancestorsOnly(
-                    added.filter((a) => a.isConnected)
+                const trees = Document.treeTops(
+                    added.filter((element) => element.isConnected)
                 );
 
-                for (const ancestor of ancestors) {
-                    scan(ancestor, root);
+                for (const element of trees) {
+                    scan(element, interactables);
                 }
             }
         }
@@ -186,26 +298,26 @@ const Tracker = (function() {
         PendingScan.clear();
     }
 
-    function start({
-        blind
-    }) {
-        if (blind) {
-            walk();
-        } else {
-            attach(document);
+    function start() {
+        if (Roots.size > 0) {
+            throw new UnexpectedError("Tracker started in unclean state");
         }
 
-        while (RootsQueue.length > 0) {
-            attach(RootsQueue.shift());
+        walk();
+    }
+
+    function survey(box) {
+        if (BoxesToSurvey.delete(box) && BoxesToSurvey.size === 0) {
+            closeSurvey();
         }
     }
 
-    function track(element, members) {
-        if (members.has(element)) {
+    function track(element, interactables) {
+        if (interactables.has(element)) {
             return;
         }
 
-        members.add(element);
+        interactables.add(element);
 
         const box = Document.firstBoxGeneratingElement(element) ?? element;
 
@@ -214,12 +326,13 @@ const Tracker = (function() {
             BoxToElement.set(box, element);
         }
 
+        BoxesToSurvey.add(box);
         Intersections.observe(box);
     }
 
-    function untrack(element, members = null) {
-        if (members !== null) {
-            if (!members.delete(element)) {
+    function untrack(element, interactables = null) {
+        if (interactables !== null) {
+            if (!interactables.delete(element)) {
                 return;
             }
         }
@@ -231,17 +344,27 @@ const Tracker = (function() {
             BoxToElement.delete(box);
         }
 
+        survey(box);
+
         InteractablesInViewport.delete(element);
         Intersections.unobserve(box);
     }
 
     function walk(root = document) {
-        RootsQueue.push(root);
+        const {
+            interactables
+        } = attach(root);
 
         for (const element of root.querySelectorAll("*")) {
-            const shadowRoot = element.shadowRoot;
+            const {
+                shadowRoot
+            } = element;
 
-            if (shadowRoot === null) {
+            if (isAdoptable(element)) {
+                track(element, interactables);
+            }
+
+            if (shadowRoot === null || isIgnorable(shadowRoot)) {
                 continue;
             }
 
@@ -249,7 +372,42 @@ const Tracker = (function() {
         }
     }
 
+    function whenIdle(fn) {
+        return window.requestIdleCallback(() => {
+            if (!Script.active) {
+                return;
+            }
+
+            fn();
+        });
+    }
+
     /// Event
+
+    function handleClickListenerAdded(event) {
+        const target = event.composedPath()[0];
+
+        if (target.nodeType !== Node.ELEMENT_NODE) {
+            return;
+        }
+
+        if (!designate(target)) {
+            return;
+        }
+
+        if (Roots.size === 0) {
+            return;
+        }
+
+        const root = target.getRootNode();
+
+        if (!Roots.has(root)) {
+            return;
+        }
+
+        enqueueElement(PendingReview, root, target);
+        requestFlush();
+    }
 
     function handleIntersection(entries) {
         for (const { target: box, isIntersecting } of entries) {
@@ -260,6 +418,8 @@ const Tracker = (function() {
             } else {
                 InteractablesInViewport.delete(element);
             }
+
+            survey(box);
         }
     }
 
@@ -272,16 +432,12 @@ const Tracker = (function() {
             }
 
             if (type === "attributes") {
-                PendingReview.getOrInsertComputed(
-                    root,
-                    () => []
-                ).push(target);
-
+                enqueueElement(PendingReview, root, target);
                 continue;
             }
 
             if (removedNodes.length > 0) {
-                PendingPrune.add(root);
+                enqueueRoot(PendingPrune, root);
             }
 
             for (const node of addedNodes) {
@@ -293,55 +449,59 @@ const Tracker = (function() {
                     continue;
                 }
 
-                PendingScan.getOrInsertComputed(
-                    root,
-                    () => []
-                ).push(node);
+                enqueueElement(PendingScan, root, node);
             }
         }
 
-        window.clearTimeout(MutationTimer);
-
-        MutationTimer = window.setTimeout(flushMutations, MUTATION_DEBOUNCE_MS);
+        requestFlush();
     }
 
     function handleShadowAttached(event) {
-        const root = event.composedPath()[0].shadowRoot;
+        const {
+            shadowRoot
+        } = event.composedPath()[0];
 
-        switch (Script.state) {
-            case "active":
-                attach(root);
-                break;
-            case "init":
-                RootsQueue.push(root);
-                break;
+        if (isIgnorable(shadowRoot)) {
+            return;
         }
+
+        whenIdle(() => {
+            attach(shadowRoot);
+        });
     }
 
     /// Init
 
     Events.listen({
-        type: "shadowattached",
-        handler: handleShadowAttached
+        type: "clicklisteneradded",
+        handler: handleClickListenerAdded
+    }, {
+        managed: false
     });
 
     Script.ready.then(async () => {
-        await Document.queriesReady;
+        await Promise.all([
+            Document.dom,
+            Document.queriesReady
+        ]);
 
-        start({
-            blind: !Script.primeRun
+        whenIdle(() => {
+            start();
+
+            Events.listen({
+                type: "shadowattached",
+                handler: handleShadowAttached
+            });
         });
     });
 
-    Script.onResume(() => {
-        start({
-            blind: true
-        });
-    });
-
+    Script.onResume(start);
     Script.onSuspend(retire);
 
     return {
+        get busy() {
+            return busy();
+        },
         get interactables() {
             return (function*() {
                 for (const root of Roots) {
@@ -360,6 +520,7 @@ const Tracker = (function() {
         },
         get roots() {
             return Roots.values();
-        }
+        },
+        settle
     };
 })();

@@ -17,12 +17,19 @@ const Events = (function() {
 
     /// Public
 
-    function listen(spec) {
+    function listen(spec, {
+        managed = true
+    } = {}) {
         const symbol = Symbol(`events.key:${spec.type}`);
 
-        Registry.set(symbol, spec);
+        Registry.set(symbol, {
+            spec,
+            managed
+        });
 
-        add(spec);
+        add(spec, {
+            managed
+        });
 
         return symbol;
     }
@@ -34,8 +41,14 @@ const Events = (function() {
 
         MainController = new AbortController();
 
-        for (const spec of Registry.values()) {
-            add(spec);
+        for (const { spec, managed } of Registry.values()) {
+            if (!managed) {
+                continue;
+            }
+
+            add(spec, {
+                managed
+            });
         }
     }
 
@@ -50,13 +63,19 @@ const Events = (function() {
 
     function unlisten(symbol) {
         across(symbol, (s) => {
-            const spec = Registry.get(s);
+            const record = Registry.get(s);
 
-            if (spec !== undefined) {
-                Registry.delete(s);
-
-                remove(spec);
+            if (record === undefined) {
+                return;
             }
+
+            const {
+                spec
+            } = record;
+
+            Registry.delete(s);
+
+            remove(spec);
         });
     }
 
@@ -71,12 +90,16 @@ const Events = (function() {
         type,
         handler,
         options
+    }, {
+        managed
     }) {
         if (!active()) {
             return;
         }
 
-        const signal = MainController.signal;
+        const signal = managed
+            ? MainController.signal
+            : undefined;
 
         across(type, (t) => {
             target.addEventListener(t, handler, {

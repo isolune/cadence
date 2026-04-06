@@ -29,6 +29,7 @@ const Document = (function() {
     const CLUES = {
         nextPage: [
             ">",
+            "mais",
             "next",
             "próxima",
             "próximo",
@@ -79,7 +80,7 @@ const Document = (function() {
 
     const SELECTORS = Object.freeze({
         input: [
-            "textarea",
+            "textarea:not([readonly])",
             "[contenteditable]:not([contenteditable='false'])",
             "[role='searchbox']",
             "[role='textbox']"
@@ -89,19 +90,19 @@ const Document = (function() {
             "audio",
             "body > img",
             "button",
-            "input",
+            "input:not([readonly])",
             "details > summary:first-of-type",
             "label",
             "select",
             "video",
             "[role='button']",
+            "[role='tab']",
             "[role='treeitem']",
-            "[tabindex]"
+            "[tabindex]:not([tabindex^='-'])"
         ],
         nonInteractive: [
             "[hidden]",
             "[inert]",
-            "[readonly]",
             ":disabled",
             "[aria-disabled='true']",
             "[aria-hidden='true']"
@@ -194,26 +195,6 @@ const Document = (function() {
         : Promise.resolve();
 
     /// Public
-
-    function ancestorsOnly(elements) {
-        const ancestors = [];
-
-        elements.sort(byIntraDomOrder);
-
-        for (const element of elements) {
-            const ancestor = ancestors[ancestors.length - 1];
-
-            if (ancestor !== undefined) {
-                if (ancestor.contains(element)) {
-                    continue;
-                }
-            }
-
-            ancestors.push(element);
-        }
-
-        return ancestors;
-    }
 
     function blur() {
         document.body.insertAdjacentHTML("beforeend",
@@ -554,6 +535,24 @@ const Document = (function() {
         }[key] ?? key.toUpperCase().charCodeAt(0);
     }
 
+    function treeTops(elements) {
+        const trees = [];
+
+        elements.sort(byIntraDomOrder);
+
+        for (const element of elements) {
+            const tree = trees[trees.length - 1];
+
+            if (tree !== undefined && tree.contains(element)) {
+                continue;
+            }
+
+            trees.push(element);
+        }
+
+        return trees;
+    }
+
     /// Private
 
     function deepQuery(query) {
@@ -724,7 +723,8 @@ const Document = (function() {
             return coverage * (1 - position);
         };
 
-        const candidates = Array.from(deepQueryAll(query));
+        const candidates = Array.from(deepQueryAll(query))
+            .filter((candidate) => candidate.checkVisibility());
 
         if (backwards) {
             candidates.reverse();
@@ -782,7 +782,7 @@ const Document = (function() {
 
                     const dr = domDepth(R);
 
-                    if (dr >= depth) { // => First at depth
+                    if (dr >= depth) { // => First at deepest
                         deepest = R;
                         depth = dr;
                     }
@@ -919,6 +919,8 @@ const Document = (function() {
             }):not(${nots})
         `.trim();
 
+        ComposedQuery.nonInteractive = nots;
+
         Object.freeze(ComposedQuery);
     });
 
@@ -986,7 +988,6 @@ const Document = (function() {
         get queries() {
             return ComposedQuery;
         },
-        ancestorsOnly,
         blur,
         byIntraDomOrder,
         caretAtOrigin,
@@ -1001,7 +1002,6 @@ const Document = (function() {
         isAtomic,
         isInputField,
         isInViewport,
-        // isOpaque,
         ordered,
         pointInElement,
         queriesReady,
@@ -1011,6 +1011,7 @@ const Document = (function() {
         simulateMouseEnter,
         stepMenu,
         supportsSelection,
-        toKeyCode
+        toKeyCode,
+        treeTops
     });
 })();

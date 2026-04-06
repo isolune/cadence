@@ -1,7 +1,24 @@
 "use strict";
 
 (function() {
-    function onImage(actions) {
+    function goAhead() {
+        if (Tracker.busy) {
+            return Tracker.settle()
+                .then(() => true).catch(() => false);
+        }
+
+        if (Hints.active) {
+            return false;
+        }
+
+        return true;
+    }
+
+    async function onImage(actions) {
+        if (!await goAhead()) {
+            return;
+        }
+
         Hints.start({
             selection: {
                 target: "@role",
@@ -19,7 +36,11 @@
         });
     }
 
-    function onInteractive(actions) {
+    async function onInteractive(actions) {
+        if (!await goAhead()) {
+            return;
+        }
+
         Hints.start({
             selection: {
                 target: "@role",
@@ -38,11 +59,7 @@
 
     Keys.add({
         f: () => onInteractive([
-            Page.action("interact", {
-                params: {
-                    byHitbox: true
-                }
-            })
+            Page.action("interact")
         ]),
         F: () => onInteractive([
             Page.action("open", {
