@@ -221,7 +221,7 @@ const Hints = (function() {
     }
 
     function generateIds(n, seq) {
-        const uniq = Array.from(new Set(seq)).join("");
+        const uniq = Array.from(new Set(seq));
 
         if (uniq.length < 2 && uniq.length < n) {
             return null;
@@ -229,28 +229,23 @@ const Hints = (function() {
 
         const ids = [];
         const prefixes = [];
-        const queue = Array.from(uniq);
+        const queue = [...uniq].reverse();
 
-        let ptr = 0;
-
-        while (ids.length < n) {
-            if (queue.length === 0) {
-                const tail = prefixes[ptr] ?? ids[0];
-
-                for (const char of uniq) {
-                    queue.push(char + tail);
-                }
-
-                ptr++;
+        for (let p = 0; ids.length < n; ids.push(queue.pop())) {
+            if (queue.length > 0) {
+                continue;
             }
 
-            const id = queue.shift();
-
-            if (id.startsWith(ids[0])) {
-                prefixes.push(ids.shift());
+            if (p >= prefixes.length) {
+                prefixes.push(...ids);
+                ids.length = 0;
             }
 
-            ids.push(id);
+            const end = prefixes[p++];
+
+            for (let u = uniq.length - 1; u >= 0; u--) {
+                queue.push(uniq[u] + end);
+            }
         }
 
         return {
