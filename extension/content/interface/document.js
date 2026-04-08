@@ -367,7 +367,7 @@ const Document = (function() {
         inset = 0,
         xRatio = inset,
         yRatio = inset
-    }) {
+    } = {}) {
         let area = firstBoxArea(element, {
             content
         });
@@ -392,8 +392,8 @@ const Document = (function() {
         } = area;
 
         return {
-            x: x + (w * xRatio),
-            y: y + (h * yRatio)
+            x: Math.round(x + (w * xRatio)),
+            y: Math.round(y + (h * yRatio))
         };
     }
 
