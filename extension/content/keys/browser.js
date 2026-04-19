@@ -1,23 +1,35 @@
 "use strict";
 
+Options.define({
+    keys: {
+        browser: {
+            back: "!",
+            forward: "@",
+            tabLast: "E",
+            tabNext: "e",
+            tabRight: "ge",
+            tabRightmost: "gE",
+            tabPin: "gp",
+            tabLeft: "gq",
+            tabLeftmost: "gQ",
+            tabUnload: "gu",
+            tabFirst: "Q",
+            tabPrev: "q",
+            tabReload: "r",
+            tabReloadFull: "R",
+            tabNew: "t",
+            tabRestore: "T",
+            tabClose: "x"
+        }
+    }
+});
+
 (function() {
-    Keys.add({
-        "!": Browser.back,
-        "@": Browser.forward,
-        "E": Browser.tabLast,
-        "e": Browser.tabNext,
-        "ge": Browser.tabRight,
-        "gE": Browser.tabRightmost,
-        "gp": Browser.tabPin,
-        "gq": Browser.tabLeft,
-        "gQ": Browser.tabLeftmost,
-        "gu": Browser.tabUnload,
-        "Q": Browser.tabFirst,
-        "q": Browser.tabPrev,
-        "r": Browser.tabReload,
-        "R": () => Browser.tabReload({ bypassCache: true }),
-        "t": Browser.tabNew,
-        "T": Browser.tabRestore,
-        "x": Browser.tabClose
+    Script.configured.then(({
+        keys: {
+            browser
+        }
+    }) => {
+        Keys.addBindings(browser, Browser);
     });
 })();
