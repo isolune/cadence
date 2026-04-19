@@ -262,14 +262,13 @@ const Scroller = (function() {
 
     /// Init
 
-    Script.ready.then(async () => {
+    Script.onActive(async () => {
         await Document.dom;
 
         followElement();
     });
 
-    Script.onResume(followElement);
-    Script.onSuspend(stopActivity);
+    Script.onSuspended(stopActivity);
 
     return Object.freeze({
         get active() {

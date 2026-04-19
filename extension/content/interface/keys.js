@@ -1,19 +1,21 @@
 "use strict";
 
+const KeyLayer = Object.freeze({
+    BLOCK: 1 << 0,
+    DONE: 1 << 1,
+    NEXT: 1 << 2,
+    YIELD: 1 << 3
+});
+
 const Keys = (function() {
     const {
         NONCE: PREFIX
     } = Environment;
 
-    const BLOCK = 1 << 0;
-    const DONE = 1 << 1;
-    const NEXT = 1 << 2;
-    const YIELD = 1 << 3;
-
-    const Layers = {
+    const Layers = Object.seal({
         keydown: [],
         keyup: []
-    };
+    });
 
     const Lookup = {};
 
@@ -23,12 +25,32 @@ const Keys = (function() {
 
     function add(keys) {
         for (const [seq, fn] of Object.entries(keys)) {
+            if (seq === "") {
+                continue;
+            }
+
             for (let i = 1; i < seq.length; i++) {
                 Lookup[seq.substring(0, i)] = PREFIX;
             }
 
             Lookup[seq] = fn;
         }
+    }
+
+    function addBindings(bindings, methods) {
+        const keys = {};
+
+        for (const [name, key] of Object.entries(bindings)) {
+            const fn = methods[name];
+
+            if (typeof fn !== "function") {
+                throw new StartupError(`Could not resolve binding: '${key}:${name}'`);
+            }
+
+            keys[key] = fn;
+        }
+
+        Keys.add(keys);
     }
 
     function addLayer({
@@ -65,17 +87,18 @@ const Keys = (function() {
     function press(key) {
         const result = Lookup[Sequence + key];
 
-        if (result !== undefined) {
-            Sequence += key;
-
-            if (result === PREFIX) {
-                return true;
-            } else {
-                result();
-            }
+        if (result === undefined) {
+            return clear();
         }
 
-        return clear();
+        if (result === PREFIX) {
+            Sequence += key;
+        } else {
+            Sequence = "";
+            result();
+        }
+
+        return true;
     }
 
     function removeLayer(handle) {
@@ -88,26 +111,26 @@ const Keys = (function() {
 
     /// Private
 
-    function delegate(event) {
+    function tryEscape(event) {
+        if (event.key !== "Escape") {
+            return false;
+        }
+
+        Document.blur();
+
+        return true;
+    }
+
+    function tryLayers(event) {
         const layers = Layers[event.type];
 
         for (let i = 0; i < layers.length; i++) {
-            const response = layers[i].cb(event.key) ?? NEXT
+            const response = layers[i].cb(event.key) ?? KeyLayer.NEXT
 
-            if (response & DONE)  layers.splice(i--, 1);
-            if (response & NEXT)  continue;
-            if (response & YIELD) return true; // Yield to page
-            if (response & BLOCK) stopEvent(event);
-
-            return true;
-        }
-
-        return false;
-    }
-
-    function escape(event) {
-        if (event.key === "Escape") {
-            Document.blur();
+            if (response & KeyLayer.DONE)  layers.splice(i--, 1);
+            if (response & KeyLayer.NEXT)  continue;
+            if (response & KeyLayer.YIELD) return true; // Yield to page
+            if (response & KeyLayer.BLOCK) Events.halt(event);
 
             return true;
         }
@@ -123,11 +146,6 @@ const Keys = (function() {
         );
     }
 
-    function stopEvent(event) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-    }
-
     /// Event
 
     function handleFocus(event) {
@@ -136,64 +154,62 @@ const Keys = (function() {
 
     function handleKeyDown(event) {
         if (Document.inputIsFocused) {
-            if (escape(event)) {
-                stopEvent(event);
+            if (tryEscape(event)) {
+                Events.halt(event);
             }
-        } else if (delegate(event)) {
+        } else if (tryLayers(event)) {
             return;
         } else if (shouldIgnore(event)) {
             if (event.key !== "Shift") {
                 clear();
             }
         } else if (press(event.key)) {
-            stopEvent(event);
+            Events.halt(event);
         }
     }
 
     function handleKeyUp(event) {
         if (Document.inputIsFocused) {
             return;
-        } else if (delegate(event)) {
+        } else if (tryLayers(event)) {
             return;
         }
     }
 
-    Script.ready.then(() => {
-        Events.listen({
-            type: "focus",
-            handler: handleFocus,
-            options: {
-                capture: true
-            }
-        });
+    /// Init
 
-        Events.listen({
-            type: "keydown",
-            handler: handleKeyDown,
-            options: {
-                capture: true
-            }
-        });
+    Events.define({
+        type: "focus",
+        handler: handleFocus,
+        options: {
+            capture: true
+        }
+    });
 
-        Events.listen({
-            type: "keyup",
-            handler: handleKeyUp,
-            options: {
-                capture: true
-            }
-        });
+    Events.define({
+        target: window,
+        type: "keydown",
+        handler: handleKeyDown,
+        options: {
+            capture: true
+        }
+    });
+
+    Events.define({
+        target: window,
+        type: "keyup",
+        handler: handleKeyUp,
+        options: {
+            capture: true
+        }
     });
 
     return Object.freeze({
-        BLOCK,
-        DONE,
-        NEXT,
-        YIELD,
-        addLayer,
-        removeLayer,
         add,
+        addBindings,
+        addLayer,
         clear,
         press,
-        stop
+        removeLayer
     });
 })();

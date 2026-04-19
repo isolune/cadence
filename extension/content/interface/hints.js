@@ -154,7 +154,7 @@ const Hints = (function() {
         root.appendChild(loadStyle());
         root.appendChild(Container);
 
-        loadFont();
+        void loadFont();
     }
 
     /// Build
@@ -285,10 +285,10 @@ const Hints = (function() {
                     advance();
                 }
 
-                return Keys.BLOCK;
+                return KeyLayer.BLOCK;
             },
             up: () => {
-                return Keys.BLOCK;
+                return KeyLayer.BLOCK;
             }
         });
     }
@@ -340,27 +340,33 @@ const Hints = (function() {
 
     /// Init
 
-    Script.ready.then(() => {
-        prepareDocument();
-
-        Document.dom.then(placeHost);
-
-        Events.listen({
-            type: ["pointerdown", "wheel"],
-            handler: handleInterrupt,
-            options: {
-                passive: true
-            }
-        });
-
-        Events.listen({
-            target: window,
-            type: "resize",
-            handler: handleInterrupt
-        });
+    Events.define({
+        type: ["pointerdown", "wheel"],
+        handler: handleInterrupt,
+        options: {
+            passive: true
+        }
     });
 
-    Script.onSuspend(clear);
+    Events.define({
+        target: window,
+        type: "resize",
+        handler: handleInterrupt
+    });
+
+    Script.onActive(async ({
+        init
+    }) => {
+        if (init) {
+            prepareDocument();
+        }
+
+        await Document.dom;
+
+        placeHost();
+    });
+
+    Script.onSuspended(clear);
 
     return Object.freeze({
         get active() {

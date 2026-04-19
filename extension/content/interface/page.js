@@ -177,7 +177,13 @@ const Page = (function() {
 
     /// Compounds
 
-    function cycleInputs(n) {
+    async function cycleInputs(n) {
+        if (Tracker.busy) {
+            try {
+                await Tracker.settle();
+            } catch {}
+        }
+
         chain([
             action("focus", {
                 target: "@role",
