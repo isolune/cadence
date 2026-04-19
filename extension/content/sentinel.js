@@ -1,9 +1,9 @@
 "use strict";
 
 (function() {
-    if (typeof Script === "undefined" || typeof Opts === "undefined") {
+    if (typeof Script === "undefined" || typeof Options === "undefined") {
         return;
     }
 
-    Script.configure(Opts.config);
+    Script.configure(Options.config);
 })();
