@@ -1,6 +1,6 @@
 "use strict";
 
-Opts.define({
+Options.define({
     extraClues: {
         nextPage: [],
         prevPage: [],
@@ -26,7 +26,7 @@ const Document = (function() {
         ]
     });
 
-    const CLUES = {
+    const CLUES = Object.freeze({
         nextPage: [
             ">",
             "mais",
@@ -42,16 +42,6 @@ const Document = (function() {
             "previous",
             "前の"
         ]
-    };
-
-    const FILTER = Object.freeze({
-        boxGenerating: {
-            acceptNode(element) {
-                return element.checkVisibility()
-                    ? NodeFilter.FILTER_ACCEPT
-                    : NodeFilter.FILTER_SKIP;
-            }
-        }
     });
 
     const INPUT_TYPES = Object.freeze({
@@ -131,10 +121,11 @@ const Document = (function() {
         ]
     });
 
-    const ComposedQuery = {
+    const ComposedQuery = Object.seal({
         input: "",
-        interactive: ""
-    };
+        interactive: "",
+        nonInteractive: ""
+    });
 
     let FocusedInput = null;
 
@@ -274,7 +265,7 @@ const Document = (function() {
     function firstBoxArea(element, {
         content = false
     } = {}) {
-        const box = firstBoxGeneratingElement(element);
+        const box = firstSizedElement(element);
 
         if (box === null) {
             return null;
@@ -317,16 +308,38 @@ const Document = (function() {
         return null;
     }
 
-    function firstBoxGeneratingElement(element) {
-        if (element.checkVisibility()) {
+    function firstSizedElement(element) {
+        if (isSized(element)) {
             return element;
         }
 
-        return document.createTreeWalker(
-            element,
-            NodeFilter.SHOW_ELEMENT,
-            FILTER.boxGenerating
-        ).nextNode();
+        const child = element.firstElementChild;
+
+        if (child === null) {
+            return null;
+        }
+
+        if (isSized(child)) {
+            return child;
+        }
+
+        for (let next = child; next = next.firstElementChild;) {
+            if (!isSized(next)) {
+                continue;
+            }
+
+            return next;
+        }
+
+        for (let next = child; next = next.nextElementSibling;) {
+            if (!isSized(next)) {
+                continue;
+            }
+
+            return next;
+        }
+
+        return null;
     }
 
     function isAtomic(element) {
@@ -348,6 +361,15 @@ const Document = (function() {
         const area = toArea(element.getBoundingClientRect());
 
         return intersecting(area, viewportArea());
+    }
+
+    function isSized(element) {
+        const {
+            w,
+            h
+        } = toArea(element.getBoundingClientRect());
+
+        return w > 0 && h > 0;
     }
 
     function isOpaque(element) { // TODO: Retire
@@ -458,6 +480,8 @@ const Document = (function() {
         target.dispatchEvent(new PointerEvent("pointerup", pointerEventOptions));
         target.dispatchEvent(new MouseEvent("mouseup", mouseEventOptions));
         target.dispatchEvent(new MouseEvent("click", mouseEventOptions));
+
+        simulateMouseLeave(target);
     }
 
     function simulateKey(key) {
@@ -470,8 +494,8 @@ const Document = (function() {
         };
 
         Keys.addLayer({
-            down: (k) => k === key ? Keys.DONE : Keys.NEXT,
-            up:   (k) => k === key ? Keys.DONE : Keys.NEXT
+            down: (k) => k === key ? KeyLayer.DONE : KeyLayer.NEXT,
+            up:   (k) => k === key ? KeyLayer.DONE : KeyLayer.NEXT
         });
 
         document.activeElement.dispatchEvent(new KeyboardEvent("keydown", eventOptions));
@@ -484,6 +508,16 @@ const Document = (function() {
         }));
 
         target.dispatchEvent(new MouseEvent("mouseenter", {
+            composed: true
+        }));
+    }
+
+    function simulateMouseLeave(target) {
+        target.dispatchEvent(new MouseEvent("mouseout", {
+            bubbles: true, composed: true
+        }));
+
+        target.dispatchEvent(new MouseEvent("mouseleave", {
             composed: true
         }));
     }
@@ -893,7 +927,37 @@ const Document = (function() {
 
     /// Init
 
-    const queriesReady = Script.configured.then(({
+    Events.define({
+        type: "focusin",
+        handler: handleFocusIn
+    });
+
+    Events.define({
+        type: "focusout",
+        handler: handleFocusOut
+    });
+
+    Events.define({
+        type: "mousemove",
+        handler: handleMouseMove,
+        options: {
+            capture: true
+        }
+    });
+
+    Script.configured.then(({
+        extraClues: {
+            nextPage,
+            prevPage
+        }
+    }) => {
+        CLUES.nextPage.push(...nextPage);
+        CLUES.prevPage.push(...prevPage);
+
+        Object.freeze(CLUES);
+    });
+
+    Script.configured.then(({
         extraSelectors: {
             input,
             interactive,
@@ -924,55 +988,18 @@ const Document = (function() {
         Object.freeze(ComposedQuery);
     });
 
-    Script.configured.then(({
-        extraClues: {
-            nextPage,
-            prevPage
+    Script.onActive(async () => {
+        const activeElement = deepActiveElement();
+
+        if (activeElement === null) {
+            return;
         }
-    }) => {
-        CLUES.nextPage.push(...nextPage);
-        CLUES.prevPage.push(...prevPage);
 
-        Object.freeze(CLUES);
-    });
+        if (!isInputField(activeElement)) {
+            return;
+        }
 
-    Promise.all([
-        Script.ready,
-        queriesReady
-    ]).then(() => {
-        const checkFocus = () => {
-            const activeElement = deepActiveElement();
-
-            if (activeElement === null) {
-                return;
-            }
-
-            if (!isInputField(activeElement)) {
-                return;
-            }
-
-            FocusedInput = activeElement;
-        };
-
-        checkFocus();
-
-        Events.listen({
-            type: "focusin",
-            handler: handleFocusIn
-        });
-
-        Events.listen({
-            type: "focusout",
-            handler: handleFocusOut
-        });
-
-        Events.listen({
-            type: "mousemove",
-            handler: handleMouseMove,
-            options: {
-                capture: true
-            }
-        });
+        FocusedInput = activeElement;
     });
 
     return Object.freeze({
@@ -998,17 +1025,18 @@ const Document = (function() {
         dom,
         domDepth,
         firstBoxArea,
-        firstBoxGeneratingElement,
+        firstSizedElement,
         isAtomic,
         isInputField,
         isInViewport,
+        isSized,
         ordered,
         pointInElement,
-        queriesReady,
         select,
         simulateClick,
         simulateKey,
         simulateMouseEnter,
+        simulateMouseLeave,
         stepMenu,
         supportsSelection,
         toKeyCode,

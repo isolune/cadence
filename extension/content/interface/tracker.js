@@ -1,128 +1,514 @@
 "use strict";
 
 const Tracker = (function() {
-    const INTERSECTION_THRESHOLD = 0.05;
+    const Scheduler = (function() {
+        const Declared = new Map();
+        const Deferred = new Map();
+        const Expected = new Set();
 
-    const MUTATION_MAX_SIFT = 50;
+        const pop = (map, key, onValue) => {
+            const value = map.get(key);
+
+            if (!map.delete(key)) {
+                return false;
+            }
+
+            onValue(value);
+            return true;
+        };
+
+        /// Public
+
+        function cancel(fn) {
+            return pop(Deferred, fn, (id) => {
+                window.cancelIdleCallback(id);
+            });
+        }
+
+        function drain() {
+            for (const fn of Deferred.keys()) {
+                finish(fn);
+            }
+        }
+
+        function due(fn) {
+            return Deferred.has(fn);
+        }
+
+        function finish(fn) {
+            if (!cancel(fn)) {
+                return false;
+            }
+
+            run(fn);
+
+            return true;
+        }
+
+        function halt() {
+            for (const fn of Declared.keys()) {
+                revoke(fn);
+            }
+
+            for (const fn of Deferred.keys()) {
+                cancel(fn);
+            }
+
+            Expected.clear();
+        }
+
+        function held(fn) {
+            return Declared.has(fn);
+        }
+
+        function hold(fn) {
+            Declared.getOrInsertComputed(
+                fn,
+                () => Promise.withResolvers()
+            );
+        }
+
+        function schedule(fn) {
+            if (due(fn)) {
+                return;
+            }
+
+            if (Expected.delete(fn)) {
+                run(fn);
+            } else {
+                defer(fn);
+            }
+        }
+
+        function upon(fn) {
+            hold(fn);
+
+            const {
+                promise
+            } = Declared.get(fn);
+
+            return promise;
+        }
+
+        function urge(fn) {
+            if (finish(fn)) {
+                return Promise.resolve();
+            }
+
+            Expected.add(fn);
+
+            return upon(fn);
+        }
+
+        /// Private
+
+        function defer(fn) {
+            if (due(fn)) {
+                return;
+            }
+
+            const id = window.requestIdleCallback((deadline) => {
+                Deferred.delete(fn);
+
+                if (!Script.active) {
+                    revoke(fn);
+                    return;
+                }
+
+                run(fn, deadline);
+            });
+
+            Deferred.set(fn, id);
+        }
+
+        function close(fn) {
+            pop(Declared, fn, ({
+                resolve
+            }) => {
+                resolve();
+            });
+        }
+
+        function revoke(fn) {
+            pop(Declared, fn, ({
+                reject
+            }) => {
+                reject()
+            });
+        }
+
+        function run(fn, deadline) {
+            const timer = (
+                deadline !== undefined
+                    ? deadline.timeRemaining.bind(deadline)
+                    : () => Infinity
+            );
+
+            if (fn(timer) !== false) {
+                close(fn);
+            } else {
+                defer(fn);
+            }
+        }
+
+        return Object.freeze({
+            get any() {
+                return Deferred.size > 0;
+            },
+            cancel,
+            drain,
+            due,
+            halt,
+            held,
+            hold,
+            finish,
+            schedule,
+            upon,
+            urge
+        });
+    })();
+
+    const Surveyor = (function() {
+        const INTERSECTION_THRESHOLD = 0.05;
+
+        const Intersections = new IntersectionObserver(handleIntersections, {
+            threshold: INTERSECTION_THRESHOLD,
+        });
+
+        const IntersectionsPending = new Set();
+        const Intersecting = new Set();
+
+        const ItemToTarget = new WeakMap();
+        const TargetToItem = new WeakMap();
+
+        let Report = null;
+
+        /// Public
+
+        function bail() {
+            Report?.reject();
+        }
+
+        function drop(item) {
+            const target = targetFrom(item);
+
+            if (item !== target) {
+                disassociate(item, target);
+            }
+
+            confirm(target);
+
+            Intersections.unobserve(target);
+            Intersecting.delete(item);
+        }
+
+        function hand(item) {
+            const target = targetFor(item);
+
+            if (item !== target) {
+                associate(item, target);
+            }
+
+            IntersectionsPending.add(target);
+            Intersections.observe(target);
+        }
+
+        function open() {
+            return IntersectionsPending.size > 0;
+        }
+
+        /// Private
+
+        function associate(item, target) {
+            ItemToTarget.set(item, target);
+            TargetToItem.set(target, item);
+        }
+
+        function confirm(target) {
+            if (IntersectionsPending.delete(target) && IntersectionsPending.size === 0) {
+                Report?.resolve();
+            }
+        }
+
+        function disassociate(item, target) {
+            ItemToTarget.delete(item);
+            TargetToItem.delete(target);
+        }
+
+        function itemFrom(target) {
+            return TargetToItem.get(target) ?? target;
+        }
+
+        function targetFor(item) {
+            return Document.firstSizedElement(item) ?? item;
+        }
+
+        function targetFrom(item) {
+            return ItemToTarget.get(item) ?? item;
+        }
+
+        /// Event
+
+        function handleIntersections(entries) {
+            for (const { target, isIntersecting } of entries) {
+                const item = itemFrom(target);
+
+                if (isIntersecting) {
+                    Intersecting.add(item);
+                } else {
+                    Intersecting.delete(item);
+                }
+
+                confirm(target);
+            }
+        }
+
+        return Object.freeze({
+            get intersecting() {
+                return Intersecting.values();
+            },
+            get open() {
+                return open();
+            },
+            get report() {
+                if (!open()) {
+                    return Promise.resolve();
+                }
+
+                if (Report === null) {
+                    Report = Promise.withResolvers();
+                    Report.promise.finally(() => Report = null);
+                }
+
+                return Report.promise;
+            },
+            bail,
+            drop,
+            hand
+        });
+    })();
+
+    const Workers = (function() {
+        const EMA_ALPHA = 0.4;
+
+        const MAX_DELAYS = 8;
+        const MAX_REQUEST_MS = 25;
+
+        const List = [];
+
+        const enqueueInMap = (map, key, value) =>
+            map.getOrInsertComputed(key, () => []).push(value);
+
+        const enqueueInSet = (set, value) =>
+            set.add(value);
+
+        /// Public
+
+        function requestFlush() {
+            Scheduler.schedule(flush);
+        }
+
+        /// Private
+
+        function create(pending, enqueue, {
+            advance,
+            timeHint
+        }) {
+            let impatience = 0;
+            let timeExpected = timeHint;
+
+            const worker = Object.freeze({
+                get free() {
+                    return pending.size === 0;
+                },
+                get pending() {
+                    return pending;
+                },
+                get work() {
+                    return advance(pending);
+                },
+                bid(budget) {
+                    if (budget === Infinity) {
+                        return Number.EPSILON;
+                    }
+
+                    const wanted = timeExpected * (
+                        Math.sqrt(1 - ((impatience / MAX_DELAYS) ** 2))
+                    ) * 1.2;
+
+                    if (wanted < budget) {
+                        impatience /= 2;
+                        return wanted + Number.EPSILON;
+                    }
+
+                    if (impatience < MAX_DELAYS) {
+                        impatience++;
+                    }
+
+                    return 0;
+                },
+                clock(dt, iters) {
+                    if (iters === 0) {
+                        return;
+                    }
+
+                    timeExpected = Math.min(
+                        MAX_REQUEST_MS,
+                        (EMA_ALPHA * (Math.max(dt, 1) / iters)) +
+                        ((1 - EMA_ALPHA) * timeExpected)
+                    );
+                }
+            });
+
+            List.push(worker);
+
+            return enqueue.bind(null, pending);
+        };
+
+        function flush(timer) {
+            let allDone = true;
+
+            work: for (const { free, ...worker } of List) {
+                if (free) {
+                    continue;
+                }
+
+                const {
+                    bid,
+                    clock,
+                    work
+                } = worker;
+
+                for (
+                    let dt,
+                        iters = 0,
+                        tMin;
+                    tMin = bid(timer());
+                ) {
+                    const t0 = performance.now();
+
+                    do {
+                        const {
+                            done
+                        } = work.next();
+
+                        iters++;
+
+                        if (done) {
+                            clock(dt, iters - 1);
+                            continue work;
+                        }
+
+                        dt = performance.now() - t0;
+                    } while (dt < 1 && timer() > tMin);
+
+                    clock(dt, iters);
+                }
+
+                allDone = false;
+            }
+
+            return allDone;
+        }
+
+        return Object.freeze({
+            get queues() {
+                return List.map(({ pending }) => pending);
+            },
+            createMapBacked: (...args) => create(new Map(), enqueueInMap, ...args),
+            createSetBacked: (...args) => create(new Set(), enqueueInSet, ...args),
+            requestFlush
+        });
+    })();
+
+    const SCAN_MAX_SIFT = 100;
 
     const SHADOW_HOST_BLACKLIST = Object.freeze([
         "ICONIFY-ICON"
     ]);
 
     const DesignatedInteractables = new WeakSet();
-    const InteractablesInViewport = new Set();
 
     const Roots = new Set();
     const RootMetadata = new WeakMap();
 
-    const ElementToBox = new WeakMap();
-    const BoxToElement = new WeakMap();
-
-    const BoxesToSurvey = new Set();
-
-    const Intersections = new IntersectionObserver(handleIntersection, {
-        // delay: 100,
-        threshold: INTERSECTION_THRESHOLD,
-        // trackVisibility: true // TODO: Wait for FF
-        // https://caniuse.com/mdn-api_intersectionobserver_trackvisibility
+    const enqueuePrune = Workers.createSetBacked({
+        advance: pruneRemoved,
+        timeHint: 2.0
     });
 
-    const PendingPrune = new Set();
-    const PendingReview = new Map();
-    const PendingScan = new Map();
+    const enqueueAdopt = Workers.createSetBacked({
+        advance: adoptFound,
+        timeHint: 4.0
+    });
 
-    const enqueueElement = (pending, root, element) =>
-        pending.getOrInsertComputed(root, () => []).push(element);
+    const enqueueScan = Workers.createMapBacked({
+        advance: scanAdded,
+        timeHint: 2.0
+    });
 
-    const enqueueRoot = (pending, root) =>
-        pending.add(root);
+    const enqueueReview = Workers.createMapBacked({
+        advance: reviewChanged,
+        timeHint: 1.0
+    });
 
-    const rootObserver = (root) => {
-        const observer = new MutationObserver(handleMutation);
-
-        observer.observe(root, {
-            attributes: true,
-            attributeFilter: Document.attributes.interactive,
-            childList: true,
-            subtree: true
-        });
-
-        return observer;
-    };
-
-    let BoxSurvey = null;
-    let FlushJob = null;
+    const enqueueTrack = Workers.createMapBacked({
+        advance: trackMatched,
+        timeHint: 1.0
+    });
 
     /// Public
 
     function busy() {
-        return FlushJob !== null || BoxesToSurvey.size > 0;
+        return Scheduler.any || Surveyor.open
     }
 
-    function settle() {
-        if (!busy()) {
-            return Promise.resolve();
+    async function settle() {
+        if (Scheduler.held(start)) {
+            try {
+                await Scheduler.urge(start);
+            } catch {
+                return;
+            }
         }
 
-        if (FlushJob !== null) {
-            flush();
+        if (Scheduler.any) {
+            Scheduler.drain();
         }
 
-        if (BoxesToSurvey.size === 0) {
-            closeSurvey();
-
-            return Promise.resolve();
-        }
-
-        BoxSurvey ??= Promise.withResolvers();
-
-        return BoxSurvey.promise;
+        return Surveyor.report;
     }
 
     /// Private
 
-    function abortSurvey() {
-        BoxSurvey?.reject();
-        BoxSurvey = null;
-
-        BoxesToSurvey.clear();
-    }
-
-    function attach(root) {
+    function acquire(root) {
         if (!root.isConnected) {
             return;
         }
 
         if (Roots.has(root)) {
-            throw new UnexpectedError("Attached root twice");
+            throw new UnexpectedError("Acquired root twice");
         }
 
-        const metadata = Object.freeze({
+        Roots.add(root);
+
+        RootMetadata.set(root, {
             interactables: new Set(),
-            observer: rootObserver(root)
+            observer: new MutationObserver(handleMutations)
         });
 
-        const {
-            interactables
-        } = metadata;
-
-        Roots.add(root);
-        RootMetadata.set(root, metadata);
-
-        scan(root, interactables);
-
-        return metadata;
+        enqueueAdopt(root);
     }
 
-    function cancelFlush() {
-        window.cancelIdleCallback(FlushJob);
+    function* adoptFound(pending) {
+        for (const root of pending) {
+            pending.delete(root);
 
-        FlushJob = null;
-    }
+            observe(root);
+            scan(root);
 
-    function closeSurvey() {
-        BoxSurvey?.resolve();
-        BoxSurvey = null;
+            yield;
+        }
     }
 
     function designate(element) {
@@ -135,49 +521,6 @@ const Tracker = (function() {
         return true;
     }
 
-    function detach(root) {
-        const {
-            interactables,
-            observer
-        } = RootMetadata.get(root);
-
-        for (const element of interactables) {
-            untrack(element);
-        }
-
-        observer.disconnect();
-
-        Roots.delete(root);
-        RootMetadata.delete(root);
-
-        for (const pending of [
-            PendingPrune,
-            PendingReview,
-            PendingScan
-        ]) {
-            pending.delete(root);
-        }
-    }
-
-    function flush() {
-        if (FlushJob === null) {
-            return;
-        }
-
-        FlushJob = null;
-
-        pruneRemoved();
-        scanAdded();
-        reviewChanged();
-    }
-
-    function isAdoptable(element) {
-        return (
-            DesignatedInteractables.has(element) &&
-            !element.matches(Document.queries.nonInteractive)
-        );
-    }
-
     function isIgnorable(shadowRoot) {
         const {
             host: {
@@ -186,6 +529,19 @@ const Tracker = (function() {
         } = shadowRoot;
 
         return SHADOW_HOST_BLACKLIST.includes(tagName);
+    }
+
+    function observe(root) {
+        const {
+            observer
+        } = RootMetadata.get(root);
+
+        observer.observe(root, {
+            attributes: true,
+            attributeFilter: Document.attributes.interactive,
+            childList: true,
+            subtree: true
+        });
     }
 
     function prune(root) {
@@ -202,46 +558,52 @@ const Tracker = (function() {
         }
     }
 
-    function pruneRemoved() {
-        if (PendingPrune.size === 0) {
-            return;
-        }
-
+    function* pruneRemoved(pending) {
         for (const root of Roots) {
             if (root.isConnected) {
                 continue;
             }
 
-            detach(root);
+            pull(root);
         }
 
-        for (const root of PendingPrune) {
+        for (const root of pending) {
+            pending.delete(root);
             prune(root);
-        }
 
-        PendingPrune.clear();
-    }
-
-    function requestFlush() {
-        FlushJob ??= whenIdle(flush);
-    }
-
-    function retire() {
-        abortSurvey();
-        cancelFlush();
-
-        for (const root of Roots) {
-            detach(root);
+            yield;
         }
     }
 
-    function reviewChanged() {
-        for (const [root, changed] of PendingReview.entries()) {
+    function pull(root) {
+        const {
+            interactables,
+            observer
+        } = RootMetadata.get(root);
+
+        for (const element of interactables) {
+            untrack(element);
+        }
+
+        observer.disconnect();
+
+        Roots.delete(root);
+        RootMetadata.delete(root);
+
+        for (const pending of Workers.queues) {
+            pending.delete(root);
+        }
+    }
+
+    function* reviewChanged(pending) {
+        for (const [root, changed] of pending.entries()) {
             const {
                 interactables
             } = RootMetadata.get(root);
 
-            for (const element of changed) {
+            while (changed.length > 0) {
+                const element = changed.pop();
+
                 if (!element.isConnected) {
                     continue;
                 }
@@ -251,64 +613,82 @@ const Tracker = (function() {
                     :  element.matches(Document.queries.interactive);
 
                 if (pass) {
-                    track(element, interactables);
+                    enqueueTrack(root, element);
                 } else {
                     untrack(element, interactables);
                 }
-            }
-        }
 
-        PendingReview.clear();
+                yield;
+            }
+
+            pending.delete(root);
+        }
     }
 
-    function scan(node, interactables) {
+    function scan(node, root = node) {
         const results = node.querySelectorAll(Document.queries.interactive);
 
         if (
             node.nodeType === Node.ELEMENT_NODE &&
             node.matches(Document.queries.interactive)
         ) {
-            track(node, interactables);
+            enqueueTrack(root, node);
         }
 
         for (const element of results) {
-            track(element, interactables);
+            enqueueTrack(root, element);
         }
     }
 
-    function scanAdded() {
-        for (const [root, added] of PendingScan.entries()) {
+    function* scanAdded(pending) {
+        for (const [root, added] of pending.entries()) {
             const {
                 interactables
             } = RootMetadata.get(root);
 
-            if (added.length > MUTATION_MAX_SIFT) {
-                scan(root, interactables);
-            } else {
-                const trees = Document.treeTops(
-                    added.filter((element) => element.isConnected)
-                );
+            if (added.length > SCAN_MAX_SIFT) {
+                pending.delete(root);
+                scan(root);
 
-                for (const element of trees) {
-                    scan(element, interactables);
-                }
+                yield;
+                continue;
             }
-        }
 
-        PendingScan.clear();
+            const minimized = Document.treeTops(
+                added.filter((element) => element.isConnected)
+            );
+
+            pending.set(root, minimized);
+
+            yield;
+
+            while (minimized.length > 0) {
+                const element = minimized.pop();
+                scan(element, root);
+
+                yield;
+            }
+
+            pending.delete(root);
+        }
     }
 
-    function start() {
+    function start(timer) {
         if (Roots.size > 0) {
             throw new UnexpectedError("Tracker started in unclean state");
         }
 
-        walk();
+        walkRoots();
+
+        Events.listen(ShadowAttachedEvent);
     }
 
-    function survey(box) {
-        if (BoxesToSurvey.delete(box) && BoxesToSurvey.size === 0) {
-            closeSurvey();
+    function stop() {
+        Scheduler.halt();
+        Surveyor.bail();
+
+        for (const root of Roots) {
+            pull(root);
         }
     }
 
@@ -318,16 +698,24 @@ const Tracker = (function() {
         }
 
         interactables.add(element);
+        Surveyor.hand(element);
+    }
 
-        const box = Document.firstBoxGeneratingElement(element) ?? element;
+    function* trackMatched(pending) {
+        for (const [root, matched] of pending.entries()) {
+            const {
+                interactables
+            } = RootMetadata.get(root);
 
-        if (element !== box) {
-            ElementToBox.set(element, box);
-            BoxToElement.set(box, element);
+            while (matched.length > 0) {
+                const element = matched.pop();
+                track(element, interactables);
+
+                yield;
+            }
+
+            pending.delete(root);
         }
-
-        BoxesToSurvey.add(box);
-        Intersections.observe(box);
     }
 
     function untrack(element, interactables = null) {
@@ -337,49 +725,36 @@ const Tracker = (function() {
             }
         }
 
-        const box = ElementToBox.get(element) ?? element;
-
-        if (element !== box) {
-            ElementToBox.delete(element);
-            BoxToElement.delete(box);
-        }
-
-        survey(box);
-
-        InteractablesInViewport.delete(element);
-        Intersections.unobserve(box);
+        Surveyor.drop(element);
     }
 
-    function walk(root = document) {
-        const {
-            interactables
-        } = attach(root);
+    function walkRoots() {
+        (function walk(root = document) {
+            const walker = document.createTreeWalker(
+                root,
+                NodeFilter.SHOW_ELEMENT
+            );
 
-        for (const element of root.querySelectorAll("*")) {
-            const {
-                shadowRoot
-            } = element;
+            acquire(root);
 
-            if (isAdoptable(element)) {
-                track(element, interactables);
+            for (let node; node = walker.nextNode();) {
+                const {
+                    shadowRoot
+                } = node;
+
+                if (DesignatedInteractables.has(node)) {
+                    enqueueReview(root, node);
+                }
+
+                if (shadowRoot === null || isIgnorable(shadowRoot)) {
+                    continue;
+                }
+
+                walk(shadowRoot);
             }
+        })();
 
-            if (shadowRoot === null || isIgnorable(shadowRoot)) {
-                continue;
-            }
-
-            walk(shadowRoot);
-        }
-    }
-
-    function whenIdle(fn) {
-        return window.requestIdleCallback(() => {
-            if (!Script.active) {
-                return;
-            }
-
-            fn();
-        });
+        Workers.requestFlush();
     }
 
     /// Event
@@ -405,25 +780,11 @@ const Tracker = (function() {
             return;
         }
 
-        enqueueElement(PendingReview, root, target);
-        requestFlush();
+        enqueueReview(root, target);
+        Workers.requestFlush();
     }
 
-    function handleIntersection(entries) {
-        for (const { target: box, isIntersecting } of entries) {
-            const element = BoxToElement.get(box) ?? box;
-
-            if (isIntersecting) {
-                InteractablesInViewport.add(element);
-            } else {
-                InteractablesInViewport.delete(element);
-            }
-
-            survey(box);
-        }
-    }
-
-    function handleMutation(entries) {
+    function handleMutations(entries) {
         for (const { addedNodes, removedNodes, target, type } of entries) {
             const root = target.getRootNode();
 
@@ -432,12 +793,12 @@ const Tracker = (function() {
             }
 
             if (type === "attributes") {
-                enqueueElement(PendingReview, root, target);
+                enqueueReview(root, target);
                 continue;
             }
 
             if (removedNodes.length > 0) {
-                enqueueRoot(PendingPrune, root);
+                enqueuePrune(root);
             }
 
             for (const node of addedNodes) {
@@ -449,11 +810,11 @@ const Tracker = (function() {
                     continue;
                 }
 
-                enqueueElement(PendingScan, root, node);
+                enqueueScan(root, node);
             }
         }
 
-        requestFlush();
+        Workers.requestFlush();
     }
 
     function handleShadowAttached(event) {
@@ -465,38 +826,42 @@ const Tracker = (function() {
             return;
         }
 
-        whenIdle(() => {
-            attach(shadowRoot);
-        });
+        acquire(shadowRoot);
+        Workers.requestFlush();
     }
 
     /// Init
 
-    Events.listen({
+    Events.define({
         type: "clicklisteneradded",
         handler: handleClickListenerAdded
     }, {
-        managed: false
+        managed: false,
+        mode: EventsFlag.EAGER
     });
 
-    Script.ready.then(async () => {
-        await Promise.all([
-            Document.dom,
-            Document.queriesReady
-        ]);
-
-        whenIdle(() => {
-            start();
-
-            Events.listen({
-                type: "shadowattached",
-                handler: handleShadowAttached
-            });
-        });
+    const ShadowAttachedEvent = Events.define({
+        type: "shadowattached",
+        handler: handleShadowAttached
+    }, {
+        mode: EventsFlag.LAZY
     });
 
-    Script.onResume(start);
-    Script.onSuspend(retire);
+    Script.onActive(async ({
+        primeRun
+    }) => {
+        if (primeRun) {
+            Scheduler.hold(start);
+        } else {
+            void Scheduler.urge(start);
+        }
+
+        await Document.dom;
+
+        Scheduler.schedule(start);
+    });
+
+    Script.onSuspended(stop);
 
     return {
         get busy() {
@@ -516,7 +881,7 @@ const Tracker = (function() {
             })();
         },
         get interactablesInViewport() {
-            return InteractablesInViewport.values();
+            return Surveyor.intersecting;
         },
         get roots() {
             return Roots.values();

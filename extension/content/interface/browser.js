@@ -13,14 +13,6 @@ const Browser = (function() {
         post("back");
     }
 
-    function debug(...messages) {
-        post("debug", messages);
-    }
-
-    function error(...messages) {
-        post("error", messages);
-    }
-
     function forward() {
         post("forward");
     }
@@ -69,8 +61,14 @@ const Browser = (function() {
         post("tab-prev");
     }
 
-    function tabReload(args = {}) {
-        post("tab-reload", args);
+    function tabReload() {
+        post("tab-reload");
+    }
+
+    function tabReloadFull() {
+        post("tab-reload", {
+            bypassCache: true
+        });
     }
 
     function tabRestore() {
@@ -106,8 +104,6 @@ const Browser = (function() {
 
     return Object.freeze({
         back,
-        debug,
-        error,
         forward,
         log,
         open,
@@ -121,6 +117,7 @@ const Browser = (function() {
         tabPin,
         tabPrev,
         tabReload,
+        tabReloadFull,
         tabRestore,
         tabRight,
         tabRightmost,

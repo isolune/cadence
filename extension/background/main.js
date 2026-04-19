@@ -330,7 +330,7 @@ function tabPrev() {
 
 async function tabReload({
     bypassCache = false
-}) {
+} = {}) {
     const {
         id
     } = await currentTab();
@@ -436,12 +436,6 @@ browser.runtime.onMessage.addListener(({
         case "back":
             back(tab);
             break;
-        case "debug":
-            console.debug(...args);
-            break;
-        case "error":
-            console.error(tab, ...args);
-            break;
         case "forward":
             forward(tab);
             break;
@@ -449,7 +443,7 @@ browser.runtime.onMessage.addListener(({
             handshake(tab);
             break;
         case "log":
-            console.log(tab, ...args);
+            console.log(...args);
             break;
         case "open":
             open(args);

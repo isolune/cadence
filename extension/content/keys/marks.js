@@ -1,20 +1,42 @@
 "use strict";
 
-(function() {
-    function deleteMark() {
-        onKey((key, marks) => {
-            delete marks[key];
+Options.define({
+    keys: {
+        marks: {
+            makeMark: "m",
+            goMark: "b"
+        },
+        marksModifier: {
+            newTab: "Alt",
+            remove: ";"
+        }
+    }
+});
 
-            browser.storage.local.set({
-                marks
+(function() {
+    const ModifierKeys = Object.seal({
+        newTab: undefined,
+        remove: undefined
+    });
+
+    const execute = (fn, key, mod) => {
+        browser.storage.local.get("marks").then(({
+            marks = {}
+        }) => {
+            fn(key, marks, {
+                mod
             });
         });
-    }
+    };
 
-    function goMark({
-        newTab = false
-    } = {}) {
-        onKey((key, marks) => {
+    function goMark() {
+        const {
+            newTab: modifierKey
+        } = ModifierKeys;
+
+        onKey((key, marks, {
+            mod: newTab
+        }) => {
             const url = marks[key];
 
             if (url === undefined) {
@@ -29,43 +51,68 @@
             } else {
                 window.location.href = url;
             }
+        }, {
+            modifierKey
         });
     }
 
-    function onKey(fn) {
+    function onKey(fn, {
+        modifierKey
+    } = {}) {
+        let mod = false;
+
         Keys.addLayer({
             down: (key) => {
-                if (key === "Shift") {
-                    return Keys.BLOCK;
-                } else if (key.length !== 1) {
-                    return Keys.DONE;
+                if (key === modifierKey) {
+                    mod = !mod;
+                    return KeyLayer.BLOCK;
                 }
 
-                browser.storage.local.get("marks").then(({
-                    marks = {}
-                }) => {
-                    fn(key, marks);
-                });
+                if (key.length === 1) {
+                    execute(fn, key, mod);
+                }
 
-                return Keys.BLOCK | Keys.DONE;
+                return key === "Shift"
+                    ? KeyLayer.BLOCK
+                    : KeyLayer.BLOCK | KeyLayer.DONE;
             }
         });
     }
 
     function makeMark() {
-        onKey((key, marks) => {
-            marks[key] = window.location.href;
+        const {
+            remove: modifierKey
+        } = ModifierKeys;
+
+        onKey((key, marks, {
+            mod: remove
+        }) => {
+            if (remove) {
+                delete marks[key];
+            } else {
+                marks[key] = window.location.href;
+            }
 
             browser.storage.local.set({
                 marks
             });
+        }, {
+            modifierKey
         });
     }
 
-    Keys.add({
-        "`": goMark,
-        "m": makeMark,
-        "M": deleteMark,
-        "~": () => goMark({ newTab: true })
+    Script.configured.then(({
+        keys: {
+            marks,
+            marksModifier
+        },
+    }) => {
+        Keys.addBindings(marks, {
+            goMark,
+            makeMark
+        });
+
+        Object.assign(ModifierKeys, marksModifier);
+        Object.freeze(ModifierKeys);
     });
 })();

@@ -1,93 +1,111 @@
 "use strict";
 
-const Opts = (function() {
-    class OptsError extends Error {
-        constructor(message) {
-            super(message);
+const Options = (function() {
+    class OptionsError extends StartupError {}
 
-            this.name = this.constructor.name;
-        }
-
-        static print(config) {
-            return [
-                "",
-                ...JSON.stringify(config, null, 1).split("\n")
-            ].join(`\n_: `);
-        }
-    }
-
-    class OptsImmutableError extends OptsError {
-        constructor({
-            behavior,
-            config
-        }) {
-            super(`Configuration is already immutable\nDid not ${
-                behavior
-            } options:${
-                OptsError.print(config)
-            }`);
-        }
-    }
-
-    class OptsUnrecognizedKeyError extends OptsError {
+    class OptionsConfigureError extends OptionsError {
         constructor(key) {
-            super(`Option '${key}' unrecognized, see template:${
-                OptsError.print(DEFAULTS)
-            }`);
+            super(`Key "${key}" not found in template`);
         }
     }
 
-    const DEFAULTS = {};
+    class OptionsDefineError extends OptionsError {
+        constructor(key) {
+            super(`Key "${key}" is already defined`);
+        }
+    }
 
-    const isObj = (x) => x && Object.getPrototypeOf(x) === Object.prototype;
+    class OptionsImmutableError extends OptionsError {
+        constructor() {
+            super("Configuration is already immutable");
+        }
+    }
+
+    class OptionsShapeError extends OptionsError {
+        constructor(key) {
+            super(`Expected record at key "${key}"`);
+        }
+    }
+
+    const Config = {};
+
+    const isRecord = (x) => {
+        if (x === null || x === undefined) {
+            return false;
+        }
+
+        const prototype = Object.getPrototypeOf(x);
+
+        return prototype === Object.prototype || prototype === null;
+    };
 
     let Frozen = false;
 
     /// Public
 
-    function configure(config, into = DEFAULTS) {
+    function configure(overrides) {
         if (Frozen) {
-            throw new OptsImmutableError({
-                behavior: "configure",
-                config
-            });
+            throw new OptionsImmutableError();
         }
 
-        for (const [k, v] of Object.entries(config)) {
+        copy(overrides, Config, {
+            keyPolicy: true,
+            keyPolicyError: (key) => new OptionsConfigureError(key)
+        });
+    }
+
+    function define(defaults) {
+        if (Frozen) {
+            throw new OptionsImmutableError();
+        }
+
+        copy(defaults, Config, {
+            keyPolicy: false,
+            keyPolicyError: (key) => new OptionsDefineError(key)
+        });
+    }
+
+    /// Private
+
+    function copy(from, into, {
+        keyPolicy,
+        keyPolicyError
+    }) {
+        for (const [k, v] of Object.entries(from)) {
             const w = into[k];
 
-            if (isObj(v) && isObj(w)) {
-                configure(v, w);
-                continue;
-            } else if (into.hasOwnProperty(k)) {
-                into[k] = v;
+            if (isRecord(w)) {
+                if (!isRecord(v)) {
+                    throw new OptionsShapeError(k);
+                }
+
+                copy(v, w, {
+                    keyPolicy,
+                    keyPolicyError
+                });
+
                 continue;
             }
 
-            throw new OptsUnrecognizedKeyError(k);
+            if (into.hasOwnProperty(k) !== keyPolicy) {
+                throw keyPolicyError(k);
+            }
+
+            into[k] = v;
         }
     }
 
-    function define(config) {
-        if (Frozen) {
-            throw new OptsImmutableError({
-                behavior: "define",
-                config
-            });
-        }
-
-        Object.assign(DEFAULTS, config);
-    }
+    /// Init
 
     Script.configured.then(() => {
-        Object.freeze(DEFAULTS);
+        Object.freeze(Config);
 
         Frozen = true;
     });
 
     return Object.freeze({
         get config() {
-            return DEFAULTS;
+            return Config;
         },
         configure,
         define

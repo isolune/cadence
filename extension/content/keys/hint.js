@@ -1,5 +1,14 @@
 "use strict";
 
+Options.define({
+    keys: {
+        hint: {
+            interact: "f",
+            open: "F"
+        }
+    }
+});
+
 (function() {
     function goAhead() {
         if (Tracker.busy) {
@@ -12,28 +21,6 @@
         }
 
         return true;
-    }
-
-    async function onImage(actions) {
-        if (!await goAhead()) {
-            return;
-        }
-
-        Hints.start({
-            selection: {
-                target: "@role",
-                targetDetail: {
-                    pick: {
-                        inViewport: true
-                    },
-                    type: "images"
-                }
-            },
-            options: {
-                actions,
-                theme: Hints.theme.charcoal
-            }
-        });
     }
 
     async function onInteractive(actions) {
@@ -57,30 +44,22 @@
         });
     }
 
-    Keys.add({
-        f: () => onInteractive([
-            Page.action("interact")
-        ]),
-        F: () => onInteractive([
-            Page.action("open", {
-                params: {
-                    newTab: "yes"
-                }
-            })
-        ]),
-        i: () => onImage([ // TODO: Provisional
-            Page.action("click", {
-                params: {
-                    simulate: true
-                }
-            })
-        ]),
-        I: () => onImage([ // TODO: Provisional
-            Page.action("open", {
-                params: {
-                    newTab: "follow"
-                }
-            })
-        ])
+    Script.configured.then(({
+        keys: {
+            hint
+        }
+    }) => {
+        Keys.addBindings(hint, {
+            interact: () => onInteractive([
+                Page.action("interact")
+            ]),
+            open: () => onInteractive([ // TODO: `onLink/Media/Resource`?
+                Page.action("open", {
+                    params: {
+                        newTab: "yes"
+                    }
+                })
+            ])
+        });
     });
 })();

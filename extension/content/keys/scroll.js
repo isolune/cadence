@@ -1,5 +1,24 @@
 "use strict";
 
+Options.define({
+    keys: {
+        scroll: {
+            top: "gg",
+            bottom: "G",
+            up: "p",
+            down: "n"
+        },
+        scrollContinuous: {
+            left: "h",
+            downFast: "dU",
+            downSlow: "j",
+            upFast: "uD",
+            upSlow: "k",
+            right: "l"
+        }
+    }
+});
+
 (function() {
     const AXIS = Object.freeze({
         x: "x",
@@ -19,8 +38,8 @@
         v0: 90
     });
 
-    const KeyPassthrough = new Set();
     const Key = {};
+    const KeyPassthrough = new Set();
 
     let KeyHandle = null;
 
@@ -71,7 +90,7 @@
             }
         }
 
-        return Keys.BLOCK;
+        return KeyLayer.BLOCK;
     }
 
     function gateUp(key) {
@@ -83,7 +102,7 @@
             return;
         }
 
-        return Keys.BLOCK;
+        return KeyLayer.BLOCK;
     }
 
     function hook() {
@@ -199,46 +218,65 @@
 
     /// Init
 
-    addPair({
-        key: {
-            forward: "dU",
-            reverse: "uD"
-        },
-        motion: {
-            speed: FAST_SPEED
+    Script.configured.then(({
+        keys: {
+            scroll,
+            scrollContinuous: {
+                left,
+                downFast,
+                downSlow,
+                upFast,
+                upSlow,
+                right
+            }
         }
-    });
+    }) => {
+        const {
+            up,
+            down
+        } = scroll;
 
-    addPair({
-        key: {
-            forward: "j",
-            reverse: "k"
-        },
-        motion: {
-            speed: SLOW_SPEED
-        }
-    });
-
-    addPair({
-        key: {
-            forward: "l",
-            reverse: "h"
-        },
-        motion: {
-            direction: {
-                axis: AXIS.x
+        addPair({
+            key: {
+                forward: downFast,
+                reverse: upFast
             },
-            speed: FAST_SPEED
-        }
-    });
+            motion: {
+                speed: FAST_SPEED
+            }
+        });
 
-    Keys.add({
-        "n": () => Scroller.scrollBy({ y: HALF_PAGE_FRAC }),
-        "p": () => Scroller.scrollBy({ y: -HALF_PAGE_FRAC }),
-        "gg": () => Scroller.scrollTop(),
-        "G": () => Scroller.scrollBottom()
-    });
+        addPair({
+            key: {
+                forward: downSlow,
+                reverse: upSlow
+            },
+            motion: {
+                speed: SLOW_SPEED
+            }
+        });
 
-    KeyPassthrough.add("n");
-    KeyPassthrough.add("p");
+        addPair({
+            key: {
+                forward: right,
+                reverse: left
+            },
+            motion: {
+                direction: {
+                    axis: AXIS.x
+                },
+                speed: SLOW_SPEED
+            }
+        });
+
+        Keys.addBindings(scroll, {
+            top: () => Scroller.scrollTop(),
+            bottom: () => Scroller.scrollBottom(),
+            up: () => Scroller.scrollBy({ y: -HALF_PAGE_FRAC }),
+            down: () => Scroller.scrollBy({ y: HALF_PAGE_FRAC })
+        });
+
+        KeyPassthrough.add(up);
+        KeyPassthrough.add(down);
+    });
 })();
