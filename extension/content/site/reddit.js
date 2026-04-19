@@ -1,7 +1,7 @@
 "use strict";
 
 (function() {
-    Opts.configure({
+    Options.configure({
         extraSelectors: {
             interactive: [
                 ".drop-choices .choice",
