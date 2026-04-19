@@ -8,24 +8,23 @@ const Script = (function() {
         suspended: "suspended"
     });
 
-    const Routines = {
-        resume: [],
-        suspend: []
-    };
+    const StateChangeCallbacks = Object.freeze({
+        [STATE.active]: {
+            list: [],
+            expires: STATE.blocked
+        },
+        [STATE.blocked]: {
+            list: [],
+            expires: STATE.blocked
+        },
+        [STATE.suspended]: {
+            list: []
+        }
+    });
 
-    const {
-        promise: blocked,
-        resolve: block
-    } = Promise.withResolvers();
-
-    const {
+    const { // TODO: Provisional
         promise: configured,
         resolve: configure
-    } = Promise.withResolvers();
-
-    const {
-        promise: ready,
-        resolve: init
     } = Promise.withResolvers();
 
     let State = STATE.init;
@@ -41,42 +40,75 @@ const Script = (function() {
             }
         } else {
             if (State === STATE.init) {
-                abort();
+                block();
             } else if (State === STATE.active) {
                 suspend();
             }
         }
     }
 
-    function onResume(fn) {
-        Routines.resume.push(fn);
+    function ifBlocked(fn) {
+        onStateChanged(STATE.blocked, fn);
     }
 
-    function onSuspend(fn) {
-        Routines.suspend.push(fn);
+    function onActive(fn) {
+        onStateChanged(STATE.active, fn);
+    }
+
+    function onSuspended(fn) {
+        onStateChanged(STATE.suspended, fn);
     }
 
     /// Private
 
-    function abort() {
+    async function begin() {
         if (State !== STATE.init) {
             return;
         }
 
-        Events.suspend();
-        block();
-
-        State = STATE.blocked;
+        changeState(STATE.active, {
+            init: true,
+            primeRun: true
+        });
     }
 
-    function begin() {
+    function block() {
         if (State !== STATE.init) {
             return;
         }
 
-        init();
+        changeState(STATE.blocked);
+    }
 
-        State = STATE.active;
+    function changeState(state, description) {
+        const {
+            list,
+            expires: expiredState
+        } = StateChangeCallbacks[state];
+
+        State = state;
+
+        for (const fn of list) {
+            fn(description);
+        }
+
+        if (expiredState === undefined) {
+            return;
+        }
+
+        const {
+            list: expired
+        } = StateChangeCallbacks[expiredState];
+
+        expired.length = 0;
+    }
+
+    function onStateChanged(state, fn) {
+        const {
+            list
+        } = StateChangeCallbacks[state];
+
+        list.push(fn);
     }
 
     function resume() {
@@ -84,17 +116,10 @@ const Script = (function() {
             return;
         }
 
-        if (State === STATE.blocked) {
-            init();
-        } else {
-            for (const fn of Routines.resume) {
-                fn();
-            }
-        }
-
-        Events.resume();
-
-        State = STATE.active;
+        changeState(STATE.active, {
+            init: State === STATE.blocked,
+            primeRun: false
+        });
     }
 
     function suspend() {
@@ -102,13 +127,7 @@ const Script = (function() {
             return;
         }
 
-        Events.suspend();
-
-        for (const fn of Routines.suspend) {
-            fn();
-        }
-
-        State = STATE.suspended;
+        changeState(STATE.suspended);
     }
 
     /// Event
@@ -135,15 +154,11 @@ const Script = (function() {
         get active() {
             return State === STATE.active;
         },
-        get state() {
-            return State;
-        },
-        blocked,
         configure,
         configured,
         enable,
-        onResume,
-        onSuspend,
-        ready
+        ifBlocked,
+        onActive,
+        onSuspended
     });
 })();
